@@ -25,9 +25,18 @@ interface Swap {
         address,
         uint256
     ) external;
-    
     function getAmountsOut(uint amountIn, address[] memory path) external view returns (uint[] memory amounts);
 }
+
+interface Pair {
+    function getReserves() external view returns (
+        uint112, 
+        uint112, 
+        uint32
+    );
+}
+
+
 
 interface ICurveFi {
     function calc_withdraw_one_coin(uint256, int128) external view returns(uint256);
@@ -40,17 +49,38 @@ interface IyveCRV {
     function depositAll() external;
 }
 
+library UniswapV2Library {
+    using SafeMath for uint;
+    function getAmountOut(uint amountIn, uint reserveIn, uint reserveOut) internal pure returns (uint amountOut) {
+        require(amountIn > 0, 'UniswapV2Library: INSUFFICIENT_INPUT_AMOUNT');
+        require(reserveIn > 0 && reserveOut > 0, 'UniswapV2Library: INSUFFICIENT_LIQUIDITY');
+        uint amountInWithFee = amountIn.mul(997);
+        uint numerator = amountInWithFee.mul(reserveOut);
+        uint denominator = reserveIn.mul(1000).add(amountInWithFee);
+        amountOut = numerator / denominator;
+    }
+}
+
 contract Strategy is BaseStrategy {
     using SafeERC20 for IERC20;
     using Address for address;
     using SafeMath for uint256;
 
-    address public constant crv       = 0xD533a949740bb3306d119CC777fa900bA034cd52;
-    address public constant usdc      = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
-    address public constant crv3      = 0xbEbc44782C7dB0a1A60Cb6fe97d0b483032FF1C7;
-    address public constant weth      = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-    address public constant reward    = 0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490;
-    address public constant sushiswap = 0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F;
+    address public gov                     = 0xFEB4acf3df3cDEA7399794D0869ef76A6EfAff52;
+    address public constant crv            = 0xD533a949740bb3306d119CC777fa900bA034cd52;
+    address public constant yveCrv         = 0xc5bDdf9843308380375a611c18B50Fb9341f502A;
+    address public constant usdc           = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    address public constant crv3           = 0xbEbc44782C7dB0a1A60Cb6fe97d0b483032FF1C7;
+    address public constant weth           = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+    address public constant reward         = 0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490;
+    address public constant sushiswap      = 0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F;
+    address public constant ethCrvPair     = 0x58Dc5a51fE44589BEb22E8CE67720B5BC5378009; // Sushi
+    address public constant ethYveCrvPair  = 0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F; // Sushi
+    address public constant ethUsdcPair    = 0x397FF1542f962076d0BFE58eA045FfA2d347ACa0; 
+
+    uint256 public constant DENOMINATOR = 1000;
+    // Configurable preference for locking CRV in vault vs market-buying yveCRV. Buy only when yveCRV price becomes > 3% price of CRV
+    uint256 public vaultBuffer          = 30; 
 
     constructor(address _vault) public BaseStrategy(_vault) {
         // You can set these parameters on deployment to whatever you want
@@ -93,9 +123,17 @@ contract Strategy is BaseStrategy {
         uint256 claimable = IyveCRV(address(want)).claimable(address(this));
         if (claimable > 0) {
             IyveCRV(address(want)).claim();
-            withdrawFromCrv();
-            swap(usdc, crv, IERC20(usdc).balanceOf(address(this)));
-            deposityveCRV();
+            withdrawFromCrv(); // Convert 3crv to USDC
+            uint256 usdcBalance = IERC20(usdc).balanceOf(address(this));
+
+            // Aquire yveCRV either via mint or market-buy
+            if(shouldMint(usdcBalance)){
+                swap(usdc, crv, usdcBalance);
+                deposityveCRV();
+            }
+            else{
+                swap(usdc, yveCrv, usdcBalance);
+            }
         }
     }
 
@@ -126,19 +164,25 @@ contract Strategy is BaseStrategy {
         return;
     }
 
-    // internal helpers
+    // Here we determine if better to market-buy yveCRV or mint it with the vault
+    function shouldMint(uint256 _amountIn) internal view returns (bool) {
+        // Using reserve ratios of swap pairs will allow us to compare CRV vs yveCRV price
+        uint256 ADD_PRECISION = 1e5; // For precision safety
 
-    function protectedTokens()
-        internal
-        view
-        override
-        returns (address[] memory)
-    {
-        address[] memory protected = new address[](2);
-        protected[0] = address(want);
-        protected[1] = reward;
-        protected[2] = usdc;
-        return protected;
+        // Get reserves for all 3 pairs to be used.
+        Pair pair = Pair(ethUsdcPair);
+        (uint256 wethU, uint256 reserveUsdc, ) = pair.getReserves();
+        pair = Pair(ethCrvPair); // ETH/CRV
+        (uint256 wethC, uint256 reserveCrv, ) = pair.getReserves();
+        pair = Pair(ethYveCrvPair); // ETH/yveCRV
+        (uint256 wethY, uint256 reserveYveCrv, ) = pair.getReserves();
+
+        uint256 projectedWeth = UniswapV2Library.getAmountOut(_amountIn, reserveUsdc, wethU);
+        uint256 projectedCrv = UniswapV2Library.getAmountOut(projectedWeth, wethC, reserveCrv);
+        uint256 projectedYveCrv = UniswapV2Library.getAmountOut(projectedWeth, wethY, reserveYveCrv);
+
+        // Return true if CRV output plus buffer is better than yveCRV
+        return projectedCrv.mul(DENOMINATOR.add(vaultBuffer)).div(DENOMINATOR) > projectedYveCrv;
     }
 
     function withdrawFromCrv() internal {
@@ -185,5 +229,29 @@ contract Strategy is BaseStrategy {
 
     function deposityveCRV() internal {
         IyveCRV(address(want)).depositAll();
+    }
+
+    function setBuffer(uint256 _newBuffer) external {
+        require(msg.sender == gov, "!Governance");
+        vaultBuffer = _newBuffer;
+    }
+
+    function setGovernance(address _gov) external {
+        require(msg.sender == gov, "!Governance");
+        gov = _gov;
+    }
+
+    // internal helpers
+    function protectedTokens()
+        internal
+        view
+        override
+        returns (address[] memory)
+    {
+        address[] memory protected = new address[](2);
+        protected[0] = address(want);
+        protected[1] = reward;
+        protected[2] = usdc;
+        return protected;
     }
 }
