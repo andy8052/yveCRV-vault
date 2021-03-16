@@ -4,10 +4,10 @@ from brownie import Contract
 import time
 
 
-def test_operation(accounts, token, vault, strategy, strategist, amount):
+def test_operation(accounts, token, vault, strategy, strategist, amount, user):
     # Deposit to the vault
-    token.approve(vault.address, amount, {"from": accounts[0]})
-    vault.deposit(amount, {"from": accounts[0]})
+    token.approve(vault.address, amount, {"from": user})
+    vault.deposit(amount, {"from": user})
     assert token.balanceOf(vault.address) == amount
 
     # harvest
@@ -18,14 +18,14 @@ def test_operation(accounts, token, vault, strategy, strategist, amount):
     strategy.tend()
 
     # withdrawal
-    vault.withdraw({"from": accounts[0]})
-    assert token.balanceOf(accounts[0]) != 0
+    vault.withdraw({"from": user})
+    assert token.balanceOf(user) != 0
 
 
-def test_emergency_exit(accounts, token, vault, strategy, strategist, amount):
+def test_emergency_exit(accounts, token, vault, strategy, strategist, amount, user):
     # Deposit to the vault
-    token.approve(vault.address, amount, {"from": accounts[0]})
-    vault.deposit(amount, {"from": accounts[0]})
+    token.approve(vault.address, amount, {"from": user})
+    vault.deposit(amount, {"from": user})
     strategy.harvest()
     assert token.balanceOf(strategy.address) == amount
 
@@ -51,8 +51,8 @@ def test_profitable_harvest(
 ):
     # Deposit to the vault and harvest
     # print(yveCrv.strategies(strategy)) # Strategy params (perf fee, activation, debtraatio, mindebtperharvest, maxdebtperharvest, lastreport, totaldebt)
-    token.approve(vault.address, amount, {"from": gov})
-    vault.deposit(amount, {"from": gov})
+    token.approve(vault.address, amount, {"from": user})
+    vault.deposit(amount, {"from": user})
     assert token.balanceOf(vault.address) == amount
 
     showBalances(token, vault, strategy, yveCrv, weth, usdc, crv3)
@@ -72,8 +72,8 @@ def test_profitable_harvest(
 
 def test_change_debt(gov, token, vault, strategy, strategist, amount):
     # Deposit to the vault and harvest
-    token.approve(vault.address, amount, {"from": gov})
-    vault.deposit(amount, {"from": gov})
+    token.approve(vault.address, amount, {"from": user})
+    vault.deposit(amount, {"from": user})
     vault.updateStrategyDebtRatio(strategy.address, 5_000, {"from": gov})
     strategy.harvest()
 
@@ -111,8 +111,8 @@ def test_sweep(gov, vault, strategy, token, amount, weth, weth_amount):
 
 def test_triggers(gov, vault, strategy, token, amount, weth, weth_amount):
     # Deposit to the vault and harvest
-    token.approve(vault.address, amount, {"from": gov})
-    vault.deposit(amount, {"from": gov})
+    token.approve(vault.address, amount, {"from": user})
+    vault.deposit(amount, {"from": user})
     vault.updateStrategyDebtRatio(strategy.address, 5_000, {"from": gov})
     strategy.harvest()
     strategy.harvestTrigger(0)
@@ -138,8 +138,8 @@ def test_swap_over_mint(
     yveCrvContract,
 ):
     # Deposit to the vault and harvest
-    token.approve(vault.address, amount, {"from": gov})
-    vault.deposit(amount, {"from": gov})
+    token.approve(vault.address, amount, {"from": user})
+    vault.deposit(amount, {"from": user})
 
     # showBalances(token, vault, strategy, yveCrv, weth, usdc, crv3)
 
@@ -187,8 +187,8 @@ def test_mint_over_swap(
 ):
     # Deposit to the vault and harvest
     # print(yveCrv.strategies(strategy)) # Strategy params (perf fee, activation, debtraatio, mindebtperharvest, maxdebtperharvest, lastreport, totaldebt)
-    token.approve(vault.address, amount, {"from": gov})
-    vault.deposit(amount, {"from": gov})
+    token.approve(vault.address, amount, {"from": user})
+    vault.deposit(amount, {"from": user})
 
     showBalances(token, vault, strategy, yveCrv, weth, usdc, crv3)
 

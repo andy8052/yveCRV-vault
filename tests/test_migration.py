@@ -6,10 +6,10 @@ from brownie import Contract
 #       Show that nothing is lost!
 
 
-def test_migration(token, vault, strategy, amount, Strategy, strategist, gov):
+def test_migration(token, vault, strategy, amount, Strategy, strategist, gov, user):
     # Put some funds into current strategy
-    token.approve(vault.address, amount, {"from": gov})
-    vault.deposit(amount, {"from": gov})
+    token.approve(vault.address, amount, {"from": user})
+    vault.deposit(amount, {"from": user})
     strategy.harvest()
     assert strategy.estimatedTotalAssets() == amount
 

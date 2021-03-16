@@ -5,8 +5,11 @@ from brownie import Contract
 
 @pytest.fixture
 def gov(accounts):
-    yield accounts[0]
+    yield accounts.at("0xFEB4acf3df3cDEA7399794D0869ef76A6EfAff52", force=True)
 
+@pytest.fixture
+def user(accounts):
+    yield accounts[0]
 
 @pytest.fixture
 def rewards(accounts):
@@ -93,8 +96,15 @@ def weth():
 
 
 @pytest.fixture
-def yveCrvContract(token):
+def yveCrvContract():
     yield Contract("0xc5bDdf9843308380375a611c18B50Fb9341f502A")
+
+
+@pytest.fixture
+def proxy(strategy, gov):
+    p = Contract("0x9a165622a744C20E3B2CB443AeD98110a33a231b")
+    p.approveStrategy(strategy.address, strategy.address, {"from":gov}) # Self address as gauge
+    yield p
 
 
 @pytest.fixture

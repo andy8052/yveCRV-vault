@@ -248,7 +248,7 @@ contract Strategy is BaseStrategy {
             0,
             path,
             address(this),
-            block.timestamp
+            now
         );
     }
 
