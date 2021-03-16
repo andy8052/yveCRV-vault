@@ -43,8 +43,15 @@ interface ICurveFi {
     function remove_liquidity_one_coin(uint256, int128, uint256) external;
 }
 
+interface IVoterProxy {
+    function lock() external;
+}
+
 interface IyveCRV {
     function claimable(address) external view returns(uint256);
+    function supplyIndex(address) external view returns(uint256);
+    function balanceOf(address) external view returns(uint256);
+    function index() external view returns(uint256);
     function claim() external;
     function depositAll() external;
 }
@@ -67,15 +74,16 @@ contract Strategy is BaseStrategy {
     using SafeMath for uint256;
 
     address public gov                     = 0xFEB4acf3df3cDEA7399794D0869ef76A6EfAff52;
+    address public constant proxy          = 0x9a165622a744C20E3B2CB443AeD98110a33a231b;
     address public constant crv            = 0xD533a949740bb3306d119CC777fa900bA034cd52;
     address public constant yveCrv         = 0xc5bDdf9843308380375a611c18B50Fb9341f502A;
     address public constant usdc           = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
-    address public constant crv3           = 0xbEbc44782C7dB0a1A60Cb6fe97d0b483032FF1C7;
+    address public constant crv3           = 0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490;
+    address public constant crv3Pool       = 0xbEbc44782C7dB0a1A60Cb6fe97d0b483032FF1C7;
     address public constant weth           = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-    address public constant reward         = 0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490;
     address public constant sushiswap      = 0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F;
     address public constant ethCrvPair     = 0x58Dc5a51fE44589BEb22E8CE67720B5BC5378009; // Sushi
-    address public constant ethYveCrvPair  = 0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F; // Sushi
+    address public constant ethYveCrvPair  = 0x10B47177E92Ef9D5C6059055d92DdF6290848991; // Sushi
     address public constant ethUsdcPair    = 0x397FF1542f962076d0BFE58eA045FfA2d347ACa0; 
 
     uint256 public constant DENOMINATOR = 1000;
@@ -91,16 +99,20 @@ contract Strategy is BaseStrategy {
         IERC20(usdc).safeApprove(sushiswap, type(uint256).max);
     }
 
-    // ******** OVERRIDE THESE METHODS FROM BASE CONTRACT ************
-
     function name() external view override returns (string memory) {
         return "StrategyYearnVECRV";
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
-        uint256 claimable = IyveCRV(address(want)).claimable(address(this));
-        uint256 stable = quoteWithdrawFromCrv(claimable);
-        uint256 estveCrv = quote(usdc, address(want), stable);
+        uint256 claimable = getClaimable3Crv();        
+        uint256 stable = 0;
+        if(claimable > 0){
+            stable = quoteWithdrawFromCrv(claimable); // Calculate withdrawal amou
+        }
+        uint256 estveCrv = 0;
+        if(stable > 0){ // Quote will revert if amount is < 1
+            estveCrv = quote(usdc, address(want), stable);
+        }
         return want.balanceOf(address(this)).add(estveCrv);
     }
 
@@ -118,9 +130,8 @@ contract Strategy is BaseStrategy {
         }
 
         // Figure out how much want we have
-        uint256 before = want.balanceOf(address(this));
-
-        uint256 claimable = IyveCRV(address(want)).claimable(address(this));
+        uint256 claimable = getClaimable3Crv();
+        claimable = claimable > 0 ? claimable : IERC20(crv3).balanceOf(address(this)); // We do this to make testing harvest easier
         if (claimable > 0) {
             IyveCRV(address(want)).claim();
             withdrawFromCrv(); // Convert 3crv to USDC
@@ -137,8 +148,9 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    // we do not need to do anything here. Holding veCRV is enough
+    // Here we lock curve in the voter contract
     function adjustPosition(uint256 _debtOutstanding) internal override {
+        IVoterProxy(proxy).lock();
         return;
     }
 
@@ -159,22 +171,26 @@ contract Strategy is BaseStrategy {
     // NOTE: Can override `tendTrigger` and `harvestTrigger` if necessary
 
     function prepareMigration(address _newStrategy) internal override {
-        // TODO: Transfer any non-`want` tokens to the new strategy
-        // NOTE: `migrate` will automatically forward all `want` in this strategy to the new one
+        uint256 balance3crv = IERC20(crv3).balanceOf(address(this));
+        uint256 balanceYveCrv = IERC20(yveCrv).balanceOf(address(this));
+        if(balance3crv > 0){
+            IERC20(crv3).safeTransfer(_newStrategy, balance3crv);
+        }
+        if(balanceYveCrv > 0){
+            IERC20(yveCrv).safeTransfer(_newStrategy, balanceYveCrv);
+        }
         return;
     }
 
     // Here we determine if better to market-buy yveCRV or mint it with the vault
     function shouldMint(uint256 _amountIn) internal view returns (bool) {
         // Using reserve ratios of swap pairs will allow us to compare CRV vs yveCRV price
-        uint256 ADD_PRECISION = 1e5; // For precision safety
-
-        // Get reserves for all 3 pairs to be used.
+        // Get reserves for all 3 pairs to be used. This should be a cheaper operation than multiple getAmountsOut calls
         Pair pair = Pair(ethUsdcPair);
         (uint256 wethU, uint256 reserveUsdc, ) = pair.getReserves();
-        pair = Pair(ethCrvPair); // ETH/CRV
+        pair = Pair(ethCrvPair);
         (uint256 wethC, uint256 reserveCrv, ) = pair.getReserves();
-        pair = Pair(ethYveCrvPair); // ETH/yveCRV
+        pair = Pair(ethYveCrvPair);
         (uint256 wethY, uint256 reserveYveCrv, ) = pair.getReserves();
 
         uint256 projectedWeth = UniswapV2Library.getAmountOut(_amountIn, reserveUsdc, wethU);
@@ -186,12 +202,12 @@ contract Strategy is BaseStrategy {
     }
 
     function withdrawFromCrv() internal {
-        uint256 remove = IERC20(reward).balanceOf(address(this));
-        ICurveFi(crv3).remove_liquidity_one_coin(remove, 1, 0);
+        uint256 amount = IERC20(crv3).balanceOf(address(this));
+        ICurveFi(crv3Pool).remove_liquidity_one_coin(amount, 1, 0);
     }
 
     function quoteWithdrawFromCrv(uint256 _amount) internal view returns(uint256) {
-        return ICurveFi(crv3).calc_withdraw_one_coin(_amount, 1);
+        return ICurveFi(crv3Pool).calc_withdraw_one_coin(_amount, 1);
     }
 
     function quote(address token_in, address token_out, uint256 amount_in) internal view returns (uint256) {
@@ -206,6 +222,15 @@ contract Strategy is BaseStrategy {
         }
         uint256[] memory amounts = Swap(sushiswap).getAmountsOut(amount_in, path);
         return amounts[amounts.length - 1];
+    }
+
+    function getClaimable3Crv() public view returns (uint256) {
+        IyveCRV YveCrv = IyveCRV(address(want));
+        uint256 claimable = YveCrv.claimable(address(this));
+        uint256 claimableToAdd = (YveCrv.index() - YveCrv.supplyIndex(address(this)))
+            .mul(YveCrv.balanceOf(address(this)))
+            .div(1e18);
+        return claimable.mul(1e18).add(claimableToAdd);
     }
     
     function swap(address token_in, address token_out, uint amount_in) internal {
@@ -248,9 +273,9 @@ contract Strategy is BaseStrategy {
         override
         returns (address[] memory)
     {
-        address[] memory protected = new address[](2);
+        address[] memory protected = new address[](3);
         protected[0] = address(want);
-        protected[1] = reward;
+        protected[1] = crv3;
         protected[2] = usdc;
         return protected;
     }
