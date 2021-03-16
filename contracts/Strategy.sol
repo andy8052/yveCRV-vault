@@ -151,7 +151,6 @@ contract Strategy is BaseStrategy {
     // Here we lock curve in the voter contract
     function adjustPosition(uint256 _debtOutstanding) internal override {
         IVoterProxy(proxy).lock();
-        return;
     }
 
     function liquidatePosition(uint256 _amountNeeded)
