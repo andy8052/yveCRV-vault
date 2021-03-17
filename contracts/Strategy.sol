@@ -104,16 +104,17 @@ contract Strategy is BaseStrategy {
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
+        uint256 _totalAssets = want.balanceOf(address(this));
         uint256 claimable = getClaimable3Crv();        
         uint256 stable = 0;
         if(claimable > 0){
-            stable = quoteWithdrawFromCrv(claimable); // Calculate withdrawal amou
+            stable = quoteWithdrawFromCrv(claimable); // Calculate withdrawal amount
         }
         uint256 estveCrv = 0;
         if(stable > 0){ // Quote will revert if amount is < 1
             estveCrv = quote(usdc, address(want), stable);
         }
-        return want.balanceOf(address(this)).add(estveCrv);
+        return _totalAssets.add(estveCrv);
     }
 
     function prepareReturn(uint256 _debtOutstanding)
