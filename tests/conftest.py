@@ -53,12 +53,13 @@ def crv():
 
 
 @pytest.fixture
-def amount(accounts, token):
+def amount(accounts, token, gov):
     amount = 10_000 * 10 ** token.decimals()
     # In order to get some funds for the token you are about to use,
     # it impersonate an exchange address to use it's funds.
-    reserve = accounts.at("0x153865375d91dfb5a190cf1a4643829421ba562e", force=True)
+    reserve = accounts.at("0x10B47177E92Ef9D5C6059055d92DdF6290848991", force=True)
     token.transfer(accounts[0], amount, {"from": reserve})
+    token.transfer(gov, amount, {"from": reserve})
     yield amount
 
 
@@ -137,10 +138,10 @@ def not_banteg(accounts):
 
 
 @pytest.fixture
-def weth_amount(accounts, weth):
+def weth_amount(accounts, weth, gov):
     amount = 1e21
     # In order to get some funds for the token you are about to use,
     # it impersonate an exchange address to use it's funds.
     reserve = accounts.at("0x71116d00e6a929f7828455d1a05de3ac45dc0193", force=True)
-    weth.transfer(accounts[0], amount, {"from": reserve})
+    weth.transfer(gov, amount, {"from": reserve})
     yield amount

@@ -48,6 +48,7 @@ def test_profitable_harvest(
     crv3,
     chain,
     whale_3crv,
+    user
 ):
     # Deposit to the vault and harvest
     # print(yveCrv.strategies(strategy)) # Strategy params (perf fee, activation, debtraatio, mindebtperharvest, maxdebtperharvest, lastreport, totaldebt)
@@ -63,14 +64,17 @@ def test_profitable_harvest(
     # showBalances(token, vault, strategy, yveCrv, weth, usdc, crv3)
 
     # Simulate a claim by sending some 3Crv to the strategy before harvest
-    crv3.transfer(strategy, 10e21, {"from": whale_3crv})
+    crv3.transfer(strategy, 10e20, {"from": whale_3crv})
     strategy.harvest()
     print("\n\n~~After Harvest #2~~")
     showBalances(token, vault, strategy, yveCrv, weth, usdc, crv3)
     assert token.balanceOf(strategy.address) > amount
 
+def test_set_buffer(gov, token, vault, strategy, strategist):
+    # Deposit to the vault and harvest
+    strategy.setBuffer(20, {"from": gov})
 
-def test_change_debt(gov, token, vault, strategy, strategist, amount):
+def test_change_debt(gov, token, vault, strategy, strategist, amount, user):
     # Deposit to the vault and harvest
     token.approve(vault.address, amount, {"from": user})
     vault.deposit(amount, {"from": user})
@@ -109,7 +113,7 @@ def test_sweep(gov, vault, strategy, token, amount, weth, weth_amount):
     assert weth.balanceOf(gov) == before_balance
 
 
-def test_triggers(gov, vault, strategy, token, amount, weth, weth_amount):
+def test_triggers(gov, vault, strategy, token, amount, weth, weth_amount, user):
     # Deposit to the vault and harvest
     token.approve(vault.address, amount, {"from": user})
     vault.deposit(amount, {"from": user})
@@ -136,6 +140,7 @@ def test_swap_over_mint(
     whale_eth,
     sushiswap,
     yveCrvContract,
+    user
 ):
     # Deposit to the vault and harvest
     token.approve(vault.address, amount, {"from": user})
@@ -184,6 +189,7 @@ def test_mint_over_swap(
     sushiswap,
     yveCrvContract,
     crv,
+    user
 ):
     # Deposit to the vault and harvest
     # print(yveCrv.strategies(strategy)) # Strategy params (perf fee, activation, debtraatio, mindebtperharvest, maxdebtperharvest, lastreport, totaldebt)
@@ -205,7 +211,7 @@ def test_mint_over_swap(
         0,
         [weth.address, token.address],
         whale_eth,
-        time.time(),
+        time.time()+10,
         {"from": whale_eth, "value": 1e22},
     )
     before_shares = yveCrvContract.totalSupply()

@@ -256,12 +256,13 @@ contract Strategy is BaseStrategy {
     }
 
     function setBuffer(uint256 _newBuffer) external {
-        require(msg.sender == gov, "!Governance");
+        require(msg.sender == governance(), "!Governance");
+        require(_newBuffer < DENOMINATOR, "!TooHigh");
         vaultBuffer = _newBuffer;
     }
 
     function setGovernance(address _gov) external {
-        require(msg.sender == gov, "!Governance");
+        require(msg.sender == governance(), "!Governance");
         gov = _gov;
     }
 
