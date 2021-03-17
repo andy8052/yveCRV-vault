@@ -109,10 +109,10 @@ contract Strategy is BaseStrategy {
         uint256 stable = 0;
         if(claimable > 0){
             stable = quoteWithdrawFromCrv(claimable); // Calculate withdrawal amount
-        }
-        uint256 estveCrv = 0;
-        if(stable > 0){ // Quote will revert if amount is < 1
-            estveCrv = quote(usdc, address(want), stable);
+            uint256 estveCrv = 0;
+            if(stable > 0){ // Quote will revert if amount is < 1
+                estveCrv = quote(usdc, address(want), stable);
+            }
         }
         return _totalAssets.add(estveCrv);
     }
