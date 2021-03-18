@@ -4,13 +4,15 @@ from brownie import Contract
 import time
 
 
-def test_operation(accounts, token, vault, strategy, strategist, amount, user):
+def test_operation(accounts, token, vault, strategy, strategist, amount, user, crv3, chain, whale_3crv):
+    chain.snapshot()
     # Deposit to the vault
     token.approve(vault.address, amount, {"from": user})
     vault.deposit(amount, {"from": user})
     assert token.balanceOf(vault.address) == amount
 
     # harvest
+    crv3.transfer(strategy, 10e20, {"from": whale_3crv})
     strategy.harvest()
     assert token.balanceOf(strategy.address) == amount
 
@@ -20,7 +22,7 @@ def test_operation(accounts, token, vault, strategy, strategist, amount, user):
     # withdrawal
     vault.withdraw({"from": user})
     assert token.balanceOf(user) != 0
-
+    chain.revert()
 
 def test_emergency_exit(accounts, token, vault, strategy, strategist, amount, user):
     # Deposit to the vault
@@ -52,12 +54,13 @@ def test_profitable_harvest(
 ):
     # Deposit to the vault and harvest
     # print(yveCrv.strategies(strategy)) # Strategy params (perf fee, activation, debtraatio, mindebtperharvest, maxdebtperharvest, lastreport, totaldebt)
+    chain.snapshot()
     token.approve(vault.address, amount, {"from": user})
     vault.deposit(amount, {"from": user})
     assert token.balanceOf(vault.address) == amount
 
     showBalances(token, vault, strategy, yveCrv, weth, usdc, crv3)
-
+    
     strategy.harvest()
     assert token.balanceOf(strategy.address) == amount
 
@@ -69,6 +72,7 @@ def test_profitable_harvest(
     print("\n\n~~After Harvest #2~~")
     showBalances(token, vault, strategy, yveCrv, weth, usdc, crv3)
     assert token.balanceOf(strategy.address) > amount
+    chain.revert()
 
 def test_set_buffer(gov, token, vault, strategy, strategist):
     # Deposit to the vault and harvest
@@ -142,6 +146,7 @@ def test_swap_over_mint(
     yveCrvContract,
     user
 ):
+    chain.snapshot()
     # Deposit to the vault and harvest
     token.approve(vault.address, amount, {"from": user})
     vault.deposit(amount, {"from": user})
@@ -162,7 +167,7 @@ def test_swap_over_mint(
         0,
         [weth.address, crv.address],
         whale_eth,
-        time.time(),
+        time.time()+500,
         {"from": whale_eth, "value": 1e21},
     )
     strategy.harvest()
@@ -170,7 +175,7 @@ def test_swap_over_mint(
 
     # showBalances(token, vault, strategy, yveCrv, weth, usdc, crv3)
     assert after_shares == before_shares  # Ensure that we didn't mint
-
+    chain.revert()
 
 def test_mint_over_swap(
     gov,
@@ -191,6 +196,7 @@ def test_mint_over_swap(
     crv,
     user
 ):
+    chain.snapshot()
     # Deposit to the vault and harvest
     # print(yveCrv.strategies(strategy)) # Strategy params (perf fee, activation, debtraatio, mindebtperharvest, maxdebtperharvest, lastreport, totaldebt)
     token.approve(vault.address, amount, {"from": user})

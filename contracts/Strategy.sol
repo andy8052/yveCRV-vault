@@ -136,14 +136,15 @@ contract Strategy is BaseStrategy {
             IyveCRV(address(want)).claim();
             withdrawFromCrv(); // Convert 3crv to USDC
             uint256 usdcBalance = IERC20(usdc).balanceOf(address(this));
-
-            // Aquire yveCRV either via mint or market-buy
-            if(shouldMint(usdcBalance)){
-                swap(usdc, crv, usdcBalance);
-                deposityveCRV();
-            }
-            else{
-                swap(usdc, yveCrv, usdcBalance);
+            if(usdcBalance > 0){
+                // Aquire yveCRV either via mint or market-buy
+                if(shouldMint(usdcBalance)){
+                    swap(usdc, crv, usdcBalance);
+                    deposityveCRV();
+                }
+                else{
+                    swap(usdc, yveCrv, usdcBalance);
+                }
             }
         }
     }
