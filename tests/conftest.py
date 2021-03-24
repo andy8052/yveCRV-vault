@@ -120,7 +120,7 @@ def whale_eth(accounts):
 
 @pytest.fixture
 def whale_3crv(accounts):
-    yield accounts.at("0x5c00977a2002a3C9925dFDfb6815765F578a804f", force=True)
+    yield accounts.at("0x43b4FdFD4Ff969587185cDB6f0BD875c5Fc83f8c", force=True)
 
 
 @pytest.fixture
