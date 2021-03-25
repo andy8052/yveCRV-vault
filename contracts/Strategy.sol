@@ -185,7 +185,7 @@ contract Strategy is BaseStrategy {
         // Using reserve ratios of swap pairs will allow us to compare CRV vs yveCRV price
         // Get reserves for all 3 pairs to be used. This should be a cheaper operation than multiple getAmountsOut calls
         Pair pair = Pair(ethUsdcPair);
-        (uint256 wethU, uint256 reserveUsdc, ) = pair.getReserves();
+        (uint256 reserveUsdc, uint256 wethU, ) = pair.getReserves();
         pair = Pair(ethCrvPair);
         (uint256 wethC, uint256 reserveCrv, ) = pair.getReserves();
         pair = Pair(ethYveCrvPair);
