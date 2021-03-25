@@ -114,6 +114,12 @@ contract Strategy is BaseStrategy {
         return _totalAssets;
     }
 
+    event InsideShouldMint();
+    event ElseSwap();
+    event InsideClaimable();
+    event AfterClaim();
+    event AfterWithdraw();
+    event UsdcBalance(uint256 usdcBalance);
     function prepareReturn(uint256 _debtOutstanding)
         internal
         override
@@ -131,16 +137,25 @@ contract Strategy is BaseStrategy {
         uint256 claimable = getClaimable3Crv();
         claimable = claimable > 0 ? claimable : IERC20(crv3).balanceOf(address(this)); // We do this to make testing harvest easier
         if (claimable > 0) {
+            emit InsideClaimable();
+
             IyveCRV(address(want)).claim();
+            emit AfterClaim();
+
             withdrawFromCrv(); // Convert 3crv to USDC
+            emit AfterWithdraw();
+
             uint256 usdcBalance = IERC20(usdc).balanceOf(address(this));
-            if(usdcBalance > 0){
+            emit UsdcBalance(usdcBalance);
+            if(usdcBalance > 0) {
                 // Aquire yveCRV either via mint or market-buy
                 if(shouldMint(usdcBalance)){
+                    emit InsideShouldMint();
                     swap(usdc, crv, usdcBalance);
                     deposityveCRV();
                 }
-                else{
+                else {
+                    emit ElseSwap();
                     swap(usdc, yveCrv, usdcBalance);
                 }
             }
@@ -181,19 +196,32 @@ contract Strategy is BaseStrategy {
     }
 
     // Here we determine if better to market-buy yveCRV or mint it with the vault
-    function shouldMint(uint256 _amountIn) internal view returns (bool) {
+    event ShouldMint(uint256 amount);
+    event PairLog(uint256 value1, uint256 value2);
+    event AmountOutRet(uint256 ret);
+    function shouldMint(uint256 _amountIn) internal returns (bool) {
+        emit ShouldMint(_amountIn);
+
         // Using reserve ratios of swap pairs will allow us to compare CRV vs yveCRV price
         // Get reserves for all 3 pairs to be used. This should be a cheaper operation than multiple getAmountsOut calls
         Pair pair = Pair(ethUsdcPair);
         (uint256 wethU, uint256 reserveUsdc, ) = pair.getReserves();
+        emit PairLog(wethU, reserveUsdc);
+
         pair = Pair(ethCrvPair);
         (uint256 wethC, uint256 reserveCrv, ) = pair.getReserves();
+        emit PairLog(wethC, reserveCrv);
+
         pair = Pair(ethYveCrvPair);
         (uint256 wethY, uint256 reserveYveCrv, ) = pair.getReserves();
+        emit PairLog(wethY, reserveYveCrv);
 
         uint256 projectedWeth = UniswapV2Library.getAmountOut(_amountIn, reserveUsdc, wethU);
+        emit AmountOutRet(projectedWeth);
         uint256 projectedCrv = UniswapV2Library.getAmountOut(projectedWeth, wethC, reserveCrv);
+        emit AmountOutRet(projectedCrv);
         uint256 projectedYveCrv = UniswapV2Library.getAmountOut(projectedWeth, wethY, reserveYveCrv);
+        emit AmountOutRet(projectedYveCrv);
 
         // Return true if CRV output plus buffer is better than yveCRV
         return projectedCrv.mul(DENOMINATOR.add(vaultBuffer)).div(DENOMINATOR) > projectedYveCrv;
@@ -233,7 +261,10 @@ contract Strategy is BaseStrategy {
         return claimable.mul(1e18).add(claimableToAdd);
     }
 
+    event CallingSwap(address tokenIn, address tokenOut, uint256 amountIn);
     function swap(address token_in, address token_out, uint amount_in) internal {
+        emit CallingSwap(token_in, token_out, amount_in);
+
         bool is_weth = token_in == weth || token_out == weth;
         address[] memory path = new address[](is_weth ? 2 : 3);
         path[0] = token_in;

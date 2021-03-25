@@ -81,7 +81,7 @@ def strategy(strategist, keeper, vault, Strategy, gov):
     # Fix k error
     pairs = [strategy.ethCrvPair(), strategy.ethYveCrvPair(), strategy.ethUsdcPair()]
     for pair in pairs:
-        Contract.from_explorer(pair, owner=strategist).sync()
+        Contract(pair, owner=strategist).sync()
     yield strategy
 
 

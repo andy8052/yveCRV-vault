@@ -1,6 +1,6 @@
 import brownie
 from helpers import showBalances
-from brownie import Contract
+from brownie import Contract, Wei
 import time
 
 def test_profitable_harvest(
@@ -32,11 +32,11 @@ def test_profitable_harvest(
     # Done to fix the UniswapV2: K issue
     pairs = [strategy.ethCrvPair(), strategy.ethYveCrvPair(), strategy.ethUsdcPair()]
     for pair in pairs:
-        Contract.from_explorer(pair, owner=strategist).sync()
+        Contract(pair, owner=strategist).sync()
 
     # Simulate a claim by sending some 3Crv to the strategy before harvest
-    crv3.transfer(strategy, 1e18, {"from": whale_3crv})
-    strategy.harvest()
+    crv3.transfer(strategy, Wei("10 ether"), {"from": whale_3crv})
+    tx = strategy.harvest()
     print("\n\n~~After Harvest #2~~")
     showBalances(token, vault, strategy, yveCrv, weth, usdc, crv3)
     assert token.balanceOf(strategy.address) > amount
