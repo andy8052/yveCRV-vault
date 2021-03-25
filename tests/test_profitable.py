@@ -7,6 +7,7 @@ def test_profitable_harvest(
     gov,
     vault,
     strategy,
+    strategist,
     token,
     amount,
     weth_amount,
@@ -28,9 +29,13 @@ def test_profitable_harvest(
     assert token.balanceOf(strategy.address) == amount
 
     # showBalances(token, vault, strategy, yveCrv, weth, usdc, crv3)
+    # Done to fix the UniswapV2: K issue
+    pairs = [strategy.ethCrvPair(), strategy.ethYveCrvPair(), strategy.ethUsdcPair()]
+    for pair in pairs:
+        Contract.from_explorer(pair, owner=strategist).sync()
 
     # Simulate a claim by sending some 3Crv to the strategy before harvest
-    crv3.transfer(strategy, 10e20, {"from": whale_3crv})
+    crv3.transfer(strategy, 1e18, {"from": whale_3crv})
     strategy.harvest()
     print("\n\n~~After Harvest #2~~")
     showBalances(token, vault, strategy, yveCrv, weth, usdc, crv3)

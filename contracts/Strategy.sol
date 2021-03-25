@@ -227,7 +227,7 @@ contract Strategy is BaseStrategy {
         uint256 claimable = YveCrv.claimable(address(this));
         // REVIEW: Can YveCrv.supplyIndex(address(this))) be larger than YveCrv.index()
         // Shouldn't we use safeMath?
-        uint256 claimableToAdd = (YveCrv.index() - YveCrv.supplyIndex(address(this)))
+        uint256 claimableToAdd = (YveCrv.index().sub(YveCrv.supplyIndex(address(this))))
             .mul(YveCrv.balanceOf(address(this)))
             .div(1e18);
         return claimable.mul(1e18).add(claimableToAdd);
