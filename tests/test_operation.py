@@ -13,6 +13,12 @@ def test_operation(accounts, token, vault, strategy, strategist, amount, user, c
 
     # harvest
     crv3.transfer(strategy, 10e20, {"from": whale_3crv})
+
+    # Done to fix the UniswapV2: K issue
+    pairs = [strategy.ethCrvPair(), strategy.ethYveCrvPair(), strategy.ethUsdcPair()]
+    for pair in pairs:
+        Contract(pair, owner=strategist).sync()
+
     strategy.harvest()
     assert token.balanceOf(strategy.address) == amount
 
@@ -60,7 +66,7 @@ def test_profitable_harvest(
     assert token.balanceOf(vault.address) == amount
 
     showBalances(token, vault, strategy, yveCrv, weth, usdc, crv3)
-    
+
     strategy.harvest()
     assert token.balanceOf(strategy.address) == amount
 

@@ -7,8 +7,7 @@ pragma experimental ABIEncoderV2;
 
 // These are the core Yearn libraries
 import {
-    BaseStrategy,
-    StrategyParams
+    BaseStrategy
 } from "@yearnvaults/contracts/BaseStrategy.sol";
 import {
     SafeERC20,
@@ -30,8 +29,8 @@ interface Swap {
 
 interface Pair {
     function getReserves() external view returns (
-        uint112, 
-        uint112, 
+        uint112,
+        uint112,
         uint32
     );
 }
@@ -73,22 +72,21 @@ contract Strategy is BaseStrategy {
     using Address for address;
     using SafeMath for uint256;
 
-    address public gov                     = 0xFEB4acf3df3cDEA7399794D0869ef76A6EfAff52;
-    address public constant proxy          = 0x9a165622a744C20E3B2CB443AeD98110a33a231b;
-    address public constant crv            = 0xD533a949740bb3306d119CC777fa900bA034cd52;
-    address public constant yveCrv         = 0xc5bDdf9843308380375a611c18B50Fb9341f502A;
-    address public constant usdc           = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
-    address public constant crv3           = 0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490;
-    address public constant crv3Pool       = 0xbEbc44782C7dB0a1A60Cb6fe97d0b483032FF1C7;
-    address public constant weth           = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-    address public constant sushiswap      = 0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F;
-    address public constant ethCrvPair     = 0x58Dc5a51fE44589BEb22E8CE67720B5BC5378009; // Sushi
-    address public constant ethYveCrvPair  = 0x10B47177E92Ef9D5C6059055d92DdF6290848991; // Sushi
-    address public constant ethUsdcPair    = 0x397FF1542f962076d0BFE58eA045FfA2d347ACa0; 
+    address public constant proxy          = address(0x9a165622a744C20E3B2CB443AeD98110a33a231b);
+    address public constant crv            = address(0xD533a949740bb3306d119CC777fa900bA034cd52);
+    address public constant yveCrv         = address(0xc5bDdf9843308380375a611c18B50Fb9341f502A);
+    address public constant usdc           = address(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
+    address public constant crv3           = address(0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490);
+    address public constant crv3Pool       = address(0xbEbc44782C7dB0a1A60Cb6fe97d0b483032FF1C7);
+    address public constant weth           = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+    address public constant sushiswap      = address(0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F);
+    address public constant ethCrvPair     = address(0x58Dc5a51fE44589BEb22E8CE67720B5BC5378009); // Sushi
+    address public constant ethYveCrvPair  = address(0x10B47177E92Ef9D5C6059055d92DdF6290848991); // Sushi
+    address public constant ethUsdcPair    = address(0x397FF1542f962076d0BFE58eA045FfA2d347ACa0);
 
     uint256 public constant DENOMINATOR = 1000;
     // Configurable preference for locking CRV in vault vs market-buying yveCRV. Buy only when yveCRV price becomes > 3% price of CRV
-    uint256 public vaultBuffer          = 30; 
+    uint256 public vaultBuffer          = 30;
 
     constructor(address _vault) public BaseStrategy(_vault) {
         // You can set these parameters on deployment to whatever you want
@@ -105,7 +103,7 @@ contract Strategy is BaseStrategy {
 
     function estimatedTotalAssets() public view override returns (uint256) {
         uint256 _totalAssets = want.balanceOf(address(this));
-        uint256 claimable = getClaimable3Crv();        
+        uint256 claimable = getClaimable3Crv();
         if(claimable > 0){
             uint256 stable = quoteWithdrawFromCrv(claimable); // Calculate withdrawal amount
             if(stable > 0){ // Quote will revert if amount is < 1
@@ -227,12 +225,14 @@ contract Strategy is BaseStrategy {
     function getClaimable3Crv() public view returns (uint256) {
         IyveCRV YveCrv = IyveCRV(address(want));
         uint256 claimable = YveCrv.claimable(address(this));
+        // REVIEW: Can YveCrv.supplyIndex(address(this))) be larger than YveCrv.index()
+        // Shouldn't we use safeMath?
         uint256 claimableToAdd = (YveCrv.index() - YveCrv.supplyIndex(address(this)))
             .mul(YveCrv.balanceOf(address(this)))
             .div(1e18);
         return claimable.mul(1e18).add(claimableToAdd);
     }
-    
+
     function swap(address token_in, address token_out, uint amount_in) internal {
         bool is_weth = token_in == weth || token_out == weth;
         address[] memory path = new address[](is_weth ? 2 : 3);
@@ -260,11 +260,6 @@ contract Strategy is BaseStrategy {
         require(msg.sender == governance(), "!Governance");
         require(_newBuffer < DENOMINATOR, "!TooHigh");
         vaultBuffer = _newBuffer;
-    }
-
-    function setGovernance(address _gov) external {
-        require(msg.sender == governance(), "!Governance");
-        gov = _gov;
     }
 
     // internal helpers
