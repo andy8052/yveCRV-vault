@@ -35,8 +35,6 @@ interface Pair {
     );
 }
 
-
-
 interface ICurveFi {
     function calc_withdraw_one_coin(uint256, int128) external view returns(uint256);
     function remove_liquidity_one_coin(uint256, int128, uint256) external;
@@ -74,7 +72,6 @@ contract Strategy is BaseStrategy {
 
     address public constant proxy          = address(0x9a165622a744C20E3B2CB443AeD98110a33a231b);
     address public constant crv            = address(0xD533a949740bb3306d119CC777fa900bA034cd52);
-    address public constant yveCrv         = address(0xc5bDdf9843308380375a611c18B50Fb9341f502A);
     address public constant usdc           = address(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
     address public constant crv3           = address(0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490);
     address public constant crv3Pool       = address(0xbEbc44782C7dB0a1A60Cb6fe97d0b483032FF1C7);
@@ -87,6 +84,8 @@ contract Strategy is BaseStrategy {
     uint256 public constant DENOMINATOR = 1000;
     // Configurable preference for locking CRV in vault vs market-buying yveCRV. Buy only when yveCRV price becomes > 3% price of CRV
     uint256 public vaultBuffer          = 30;
+
+    event UpdatedBuffer(uint256 newBuffer);
 
     constructor(address _vault) public BaseStrategy(_vault) {
         // You can set these parameters on deployment to whatever you want
@@ -141,7 +140,7 @@ contract Strategy is BaseStrategy {
                     deposityveCRV();
                 }
                 else{
-                    swap(usdc, yveCrv, usdcBalance);
+                    swap(usdc, address(want), usdcBalance);
                 }
             }
         }
@@ -170,14 +169,15 @@ contract Strategy is BaseStrategy {
 
     function prepareMigration(address _newStrategy) internal override {
         uint256 balance3crv = IERC20(crv3).balanceOf(address(this));
-        uint256 balanceYveCrv = IERC20(yveCrv).balanceOf(address(this));
+        uint256 balanceYveCrv = IERC20(address(want)).balanceOf(address(this));
         if(balance3crv > 0){
             IERC20(crv3).safeTransfer(_newStrategy, balance3crv);
         }
         if(balanceYveCrv > 0){
-            IERC20(yveCrv).safeTransfer(_newStrategy, balanceYveCrv);
+            IERC20(address(want)).safeTransfer(_newStrategy, balanceYveCrv);
         }
-        return;
+        IERC20(crv).safeApprove(address(want), 0);
+        IERC20(usdc).safeApprove(sushiswap, 0);
     }
 
     // Here we determine if better to market-buy yveCRV or mint it with the vault
@@ -225,8 +225,6 @@ contract Strategy is BaseStrategy {
     function getClaimable3Crv() public view returns (uint256) {
         IyveCRV YveCrv = IyveCRV(address(want));
         uint256 claimable = YveCrv.claimable(address(this));
-        // REVIEW: Can YveCrv.supplyIndex(address(this))) be larger than YveCrv.index()
-        // Shouldn't we use safeMath?
         uint256 claimableToAdd = (YveCrv.index().sub(YveCrv.supplyIndex(address(this))))
             .mul(YveCrv.balanceOf(address(this)))
             .div(1e18);
@@ -260,6 +258,14 @@ contract Strategy is BaseStrategy {
         require(msg.sender == governance(), "!Governance");
         require(_newBuffer < DENOMINATOR, "!TooHigh");
         vaultBuffer = _newBuffer;
+        emit UpdatedBuffer(_newBuffer);
+    }
+
+    function restoreApprovals() external onlyGovernance {
+        IERC20(crv).safeApprove(address(want), 0); // CRV must go to zero first before increase
+        IERC20(usdc).safeApprove(sushiswap, 0); // USDC must go to zero first before increase
+        IERC20(crv).safeApprove(address(want), type(uint256).max);
+        IERC20(usdc).safeApprove(sushiswap, type(uint256).max);
     }
 
     // internal helpers
@@ -270,9 +276,8 @@ contract Strategy is BaseStrategy {
         returns (address[] memory)
     {
         address[] memory protected = new address[](3);
-        protected[0] = address(want);
-        protected[1] = crv3;
-        protected[2] = usdc;
+        protected[0] = crv3;
+        protected[1] = usdc;
         return protected;
     }
 }

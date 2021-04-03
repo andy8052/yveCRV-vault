@@ -4,7 +4,7 @@ from brownie import Contract
 import time
 
 
-def test_operation(accounts, token, vault, strategy, strategist, amount, user, crv3, chain, whale_3crv):
+def test_operation(accounts, token, vault, strategy, strategist, amount, user, crv3, chain, whale_3crv, gov):
     chain.snapshot()
     # Deposit to the vault
     token.approve(vault.address, amount, {"from": user})
@@ -27,6 +27,8 @@ def test_operation(accounts, token, vault, strategy, strategist, amount, user, c
     # withdrawal
     vault.withdraw({"from": user})
     assert token.balanceOf(user) != 0
+    strategy.setBuffer(40, {"from": gov}) # increase buffer to 4%
+    strategy.restoreApprovals({"from":gov}) # make sure reset approvals works
     chain.revert()
 
 def test_emergency_exit(accounts, token, vault, strategy, strategist, amount, user):

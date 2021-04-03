@@ -149,6 +149,6 @@ def weth_amount(accounts, weth, gov):
     amount = 1e21
     # In order to get some funds for the token you are about to use,
     # it impersonate an exchange address to use it's funds.
-    reserve = accounts.at("0x71116d00e6a929f7828455d1a05de3ac45dc0193", force=True)
+    reserve = accounts.at("0x2F0b23f53734252Bda2277357e97e1517d6B042A", force=True)
     weth.transfer(gov, amount, {"from": reserve})
     yield amount
