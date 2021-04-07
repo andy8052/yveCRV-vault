@@ -275,7 +275,7 @@ contract Strategy is BaseStrategy {
         override
         returns (address[] memory)
     {
-        address[] memory protected = new address[](3);
+        address[] memory protected = new address[](2);
         protected[0] = crv3;
         protected[1] = usdc;
         return protected;
