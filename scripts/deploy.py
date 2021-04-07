@@ -25,7 +25,7 @@ def get_address(msg: str) -> str:
 
 def main():
     print(f"You are using the '{network.show_active()}' network")
-    dev = accounts.load("dev")
+    dev = accounts.load("deployer")
     print(f"You are using: 'dev' [{dev.address}]")
 
     if input("Is there a Vault for this strategy already? y/[N]: ").lower() != "y":

@@ -89,9 +89,6 @@ contract Strategy is BaseStrategy {
 
     constructor(address _vault) public BaseStrategy(_vault) {
         // You can set these parameters on deployment to whatever you want
-        // maxReportDelay = 6300;
-        // profitFactor = 100;
-        // debtThreshold = 0;
         IERC20(crv).safeApprove(address(want), type(uint256).max);
         IERC20(usdc).safeApprove(sushiswap, type(uint256).max);
     }
