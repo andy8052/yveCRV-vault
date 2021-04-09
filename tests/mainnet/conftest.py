@@ -71,13 +71,21 @@ def vault(pm, gov, rewards, guardian, management, token):
 
 
 @pytest.fixture
-def strategy(strategist, keeper, vault, Strategy, gov):
+def strategy(strategist, keeper, vault, Strategy, gov, token, crv3, usdc):
     live_strat = Contract('0x43DC3A717F7436ebC924e547B586C7e2896Cef9C')
+    live_balance = token.balanceOf(live_strat)
+    live_balance_3crv = crv3.balanceOf(live_strat)
+    live_balance_usdc = crv3.balanceOf(live_strat)
     new_strategy = strategist.deploy(Strategy, vault)
     vault.migrateStrategy(live_strat, new_strategy, {"from":gov})
     live_strat.harvest({"from":gov})
+    assert token.balanceOf(live_strat) == 0
+    assert crv3.balanceOf(live_strat) == 0
+    assert usdc.balanceOf(live_strat) == 0
+    assert token.balanceOf(new_strategy) == live_balance
+    assert crv3.balanceOf(new_strategy) == live_balance_3crv
+    assert usdc.balanceOf(new_strategy) == live_balance_usdc
     new_strategy.setKeeper(keeper)
-    # vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
     yield new_strategy
 
 
