@@ -39,11 +39,12 @@ def test_profitable_harvest(
     # Simulate a claim by sending some 3Crv to the strategy before harvest
     crv3.transfer(strategy, 1e18, {"from": whale_3crv})
     before = token.balanceOf(strategy.address) + token.balanceOf(vault.address)
+    pps_before = vault.pricePerShare()
     strategy.harvest({"from": strategist})
     chain.sleep(60*60*6) # sleep to increase pps
     chain.mine(1)
+    assert vault.pricePerShare() > pps_before
+    chain.mine(1)
     after = token.balanceOf(strategy.address) + token.balanceOf(vault.address)
-    print("\n\n~~After Harvest #2~~")
     showBalances(token, vault, strategy, yveCrv, weth, usdc, crv3)
-    assert False
     assert after > before

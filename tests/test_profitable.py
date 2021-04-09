@@ -46,7 +46,6 @@ def test_profitable_harvest(
     chain.sleep(60*60*6) # sleep to increase pps
     chain.mine(1)
     print("pps_after: ",vault.pricePerShare())
-    print("\n\n~~After Harvest #2~~")
     showBalances(token, vault, strategy, yveCrv, weth, usdc, crv3)
     assert token.balanceOf(strategy.address) > amount
     assert vault.pricePerShare() > pps_before
