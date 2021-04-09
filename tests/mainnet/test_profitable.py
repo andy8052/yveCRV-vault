@@ -19,15 +19,16 @@ def test_profitable_harvest(
     whale_3crv,
     user
 ):
+    vault_before = token.balanceOf(vault)
     token.approve(vault.address, amount, {"from": user})
     vault.deposit(amount, {"from": user})
-    assert token.balanceOf(vault.address) == amount
+    vault_after = token.balanceOf(vault)
+    assert vault_after == amount + vault_before
 
     showBalances(token, vault, strategy, yveCrv, weth, usdc, crv3)
 
-    strategy.harvest()
-    assert token.balanceOf(strategy.address) == amount
-    
+    strategy.harvest({"from": strategist})
+    assert token.balanceOf(strategy.address) == vault_after
 
     # showBalances(token, vault, strategy, yveCrv, weth, usdc, crv3)
     # Done to fix the UniswapV2: K issue
@@ -35,18 +36,14 @@ def test_profitable_harvest(
     for pair in pairs:
         Contract.from_explorer(pair, owner=strategist).sync()
 
-    
     # Simulate a claim by sending some 3Crv to the strategy before harvest
-    crv3.transfer(strategy, 1e20, {"from": whale_3crv})
-    
-    assert False
-    pps_before = vault.pricePerShare()
-    print("pps_before: ",pps_before)
-    strategy.harvest()
+    crv3.transfer(strategy, 1e18, {"from": whale_3crv})
+    before = token.balanceOf(strategy.address) + token.balanceOf(vault.address)
+    strategy.harvest({"from": strategist})
     chain.sleep(60*60*6) # sleep to increase pps
     chain.mine(1)
-    print("pps_after: ",vault.pricePerShare())
+    after = token.balanceOf(strategy.address) + token.balanceOf(vault.address)
     print("\n\n~~After Harvest #2~~")
     showBalances(token, vault, strategy, yveCrv, weth, usdc, crv3)
-    assert token.balanceOf(strategy.address) > amount
-    assert vault.pricePerShare() > pps_before
+    assert False
+    assert after > before
