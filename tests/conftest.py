@@ -65,21 +65,16 @@ def amount(accounts, token, gov):
 
 @pytest.fixture
 def vault(pm, gov, rewards, guardian, management, token):
-    Vault = pm(config["dependencies"][0]).Vault
-    vault = guardian.deploy(Vault)
-    vault.initialize(token, gov, rewards, "", "", guardian,{"from": gov})
-    vault.setDepositLimit(2 ** 256 - 1, {"from": gov})
-    vault.setManagement(management, {"from": gov})
-    yield vault
-
+    yield Contract("0x9d409a0A012CFbA9B15F6D4B36Ac57A46966Ab9a")
 
 @pytest.fixture
 def strategy(strategist, keeper, vault, Strategy, gov):
+    old_strat = Contract(vault.withdrawalQueue(0))
     strategy = strategist.deploy(Strategy, vault)
     strategy.setKeeper(keeper)
-    vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
+    vault.migrateStrategy(old_strat, strategy, {'from':gov})
     # Fix k error
-    pairs = [strategy.ethCrvPair(), strategy.ethYveCrvPair(), strategy.ethUsdcPair()]
+    pairs = [strategy.ethCrvPair(), strategy.ethYvBoostPair(), strategy.ethUsdcPair()]
     for pair in pairs:
         Contract.from_explorer(pair, owner=strategist).sync()
     yield strategy

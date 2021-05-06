@@ -31,7 +31,7 @@ def test_profitable_harvest(
 
     # showBalances(token, vault, strategy, yveCrv, weth, usdc, crv3)
     # Done to fix the UniswapV2: K issue
-    pairs = [strategy.ethCrvPair(), strategy.ethYveCrvPair(), strategy.ethUsdcPair()]
+    pairs = [strategy.ethCrvPair(), strategy.ethYvBoostPair(), strategy.ethUsdcPair()]
     for pair in pairs:
         Contract.from_explorer(pair, owner=strategist).sync()
 

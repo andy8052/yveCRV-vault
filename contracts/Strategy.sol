@@ -71,6 +71,7 @@ contract Strategy is BaseStrategy {
     using SafeMath for uint256;
 
     address public constant proxy          = address(0x9a165622a744C20E3B2CB443AeD98110a33a231b);
+    address public constant yvBoost        = address(0x9d409a0A012CFbA9B15F6D4B36Ac57A46966Ab9a);
     address public constant crv            = address(0xD533a949740bb3306d119CC777fa900bA034cd52);
     address public constant usdc           = address(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
     address public constant crv3           = address(0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490);
@@ -78,12 +79,13 @@ contract Strategy is BaseStrategy {
     address public constant weth           = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
     address public constant sushiswap      = address(0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F);
     address public constant ethCrvPair     = address(0x58Dc5a51fE44589BEb22E8CE67720B5BC5378009); // Sushi
-    address public constant ethYveCrvPair  = address(0x10B47177E92Ef9D5C6059055d92DdF6290848991); // Sushi
+    address public constant ethYvBoostPair = address(0x9461173740D27311b176476FA27e94C681b1Ea6b); // Sushi
     address public constant ethUsdcPair    = address(0x397FF1542f962076d0BFE58eA045FfA2d347ACa0);
-
-    uint256 public constant DENOMINATOR = 1000;
-    // Configurable preference for locking CRV in vault vs market-buying yveCRV. Buy only when yveCRV price becomes > 3% price of CRV
+    
+    // Configurable preference for locking CRV in vault vs market-buying yveCRV. 
+    // Default: Buy only when yveCRV price becomes > 3% price of CRV
     uint256 public vaultBuffer          = 30;
+    uint256 public constant DENOMINATOR = 1000;
 
     event UpdatedBuffer(uint256 newBuffer);
 
@@ -130,17 +132,29 @@ contract Strategy is BaseStrategy {
             IyveCRV(address(want)).claim();
             withdrawFromCrv(); // Convert 3crv to USDC
             uint256 usdcBalance = IERC20(usdc).balanceOf(address(this));
-            if(usdcBalance > 0){
+            if(usdcBalance > 1e6){ // Don't bother to swap small amounts
+                uint256 profit = 0;
                 uint256 balanceBefore = want.balanceOf(address(this));
                 // Aquire yveCRV either via mint or market-buy
                 if(shouldMint(usdcBalance)){
                     swap(usdc, crv, usdcBalance);
-                    deposityveCRV();
+                    deposityveCRV(); // Mint yveCRV
+                    profit = want.balanceOf(address(this)).sub(balanceBefore);
                 }
                 else{
-                    swap(usdc, address(want), usdcBalance);
+                    // Avoid rugging strategists
+                    uint256 strategistRewards = vault.balanceOf(address(this));
+                    swap(usdc, address(vault), usdcBalance);
+                    uint256 swapGain = vault.balanceOf(address(this)).sub(strategistRewards);
+                    if(vault.balanceOf(address(this)) > 0){
+                        // Here we get our profit by burning yvBOOST shares on withdraw.
+                        // It would be incorrect to calculate profit by taking a diff on before/after "want"
+                        // balance. This is because the "want" balance of the strategy will be unchanged
+                        // after withdrawing to itself. Profits we realize here come frome burning shares.
+                        profit = vault.withdraw(swapGain);
+                    }
                 }
-                _profit = want.balanceOf(address(this)).sub(balanceBefore);
+                _profit = profit;
             }
         }
     }
@@ -180,20 +194,23 @@ contract Strategy is BaseStrategy {
     }
 
     // Here we determine if better to market-buy yveCRV or mint it with the vault
-    function shouldMint(uint256 _amountIn) internal view returns (bool) {
+    function shouldMint(uint256 _amountIn) public view returns (bool) {
         // Using reserve ratios of swap pairs will allow us to compare CRV vs yveCRV price
         // Get reserves for all 3 pairs to be used. This should be a cheaper operation than multiple getAmountsOut calls
         Pair pair = Pair(ethUsdcPair);
         (uint256 reserveUsdc, uint256 wethU, ) = pair.getReserves();
         pair = Pair(ethCrvPair);
         (uint256 wethC, uint256 reserveCrv, ) = pair.getReserves();
-        pair = Pair(ethYveCrvPair);
-        (uint256 wethY, uint256 reserveYveCrv, ) = pair.getReserves();
+        pair = Pair(ethYvBoostPair);
+        (uint256 reserveYvBoost, uint256 wethY, ) = pair.getReserves();
 
         uint256 projectedWeth = UniswapV2Library.getAmountOut(_amountIn, reserveUsdc, wethU);
         uint256 projectedCrv = UniswapV2Library.getAmountOut(projectedWeth, wethC, reserveCrv);
-        uint256 projectedYveCrv = UniswapV2Library.getAmountOut(projectedWeth, wethY, reserveYveCrv);
+        uint256 projectedYvBoost = UniswapV2Library.getAmountOut(projectedWeth, wethY, reserveYvBoost);
 
+        // Convert yvBOOST to yveCRV
+        uint256 projectedYveCrv = projectedYvBoost.mul(vault.pricePerShare()).div(1e18); // save some gas by hardcoding 1e18
+        
         // Return true if CRV output plus buffer is better than yveCRV
         return projectedCrv.mul(DENOMINATOR.add(vaultBuffer)).div(DENOMINATOR) > projectedYveCrv;
     }

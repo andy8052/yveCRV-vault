@@ -16,7 +16,7 @@ def test_operation(accounts, token, vault, strategy, strategist, amount, user, c
     assert token.balanceOf(strategy.address) == amount
 
     # Done to fix the UniswapV2: K issue
-    pairs = [strategy.ethCrvPair(), strategy.ethYveCrvPair(), strategy.ethUsdcPair()]
+    pairs = [strategy.ethCrvPair(), strategy.ethYvBoostPair(), strategy.ethUsdcPair()]
     for pair in pairs:
         Contract.from_explorer(pair, owner=strategist).sync()
 

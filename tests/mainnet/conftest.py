@@ -72,7 +72,7 @@ def vault(pm, gov, rewards, guardian, management, token):
 
 @pytest.fixture
 def strategy(strategist, keeper, vault, Strategy, gov, token, crv3, usdc):
-    live_strat = Contract('0x43DC3A717F7436ebC924e547B586C7e2896Cef9C')
+    live_strat = Contract('0x683b5C88D48FcCfB3e778FF0fA954F84cA7Ce9DF')
     live_balance = token.balanceOf(live_strat)
     live_balance_3crv = crv3.balanceOf(live_strat)
     live_balance_usdc = crv3.balanceOf(live_strat)

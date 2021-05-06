@@ -38,7 +38,7 @@ def test_swap_over_mint(
     # Simulate a claim by sending some 3Crv to the strategy before harvest
     crv3.transfer(strategy, 10e21, {"from": whale_3crv})
 
-    pairs = [strategy.ethCrvPair(), strategy.ethYveCrvPair(), strategy.ethUsdcPair()]
+    pairs = [strategy.ethCrvPair(), strategy.ethYvBoostPair(), strategy.ethUsdcPair()]
     for pair in pairs:
         Contract.from_explorer(pair, owner=strategist).sync()
 
@@ -79,7 +79,7 @@ def test_mint_over_swap(
     user
 ):
     chain.snapshot()
-    pairs = [strategy.ethCrvPair(), strategy.ethYveCrvPair(), strategy.ethUsdcPair()]
+    pairs = [strategy.ethCrvPair(), strategy.ethYvBoostPair(), strategy.ethUsdcPair()]
     for pair in pairs:
         Contract.from_explorer(pair, owner=strategist).sync()
     # Deposit to the vault and harvest
