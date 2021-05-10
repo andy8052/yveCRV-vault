@@ -1,4 +1,4 @@
-import brownie
+import brownie, math, time
 from helpers import showBalances
 from brownie import Contract
 import time
@@ -20,9 +20,21 @@ def test_operation(accounts, token, vault, strategy, strategist, amount, user, c
     for pair in pairs:
         Contract.from_explorer(pair, owner=strategist).sync()
 
-    # harvest
+    # harvest using BUY route
+    chain.snapshot()
+    a = accounts[7]
+    sushi = Contract("0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F")
+    path = [
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",   # WETH
+        "0xD533a949740bb3306d119CC777fa900bA034cd52"   # CRV
+    ]
+    sushi.swapExactETHForTokens(0,path,a,math.ceil(time.time()),{'from':a,'value':100e18})
     crv3.transfer(strategy, 10e20, {"from": whale_3crv})
     strategy.harvest()
+    chain.revert()
+    crv3.transfer(strategy, 10e20, {"from": whale_3crv})
+    strategy.harvest()
+
 
     # withdrawal
     vault.withdraw({"from": user})

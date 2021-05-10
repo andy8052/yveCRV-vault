@@ -16,7 +16,7 @@ import {
     Address
 } from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 
-interface Swap {
+interface ISwap {
     function swapExactTokensForTokens(
         uint256,
         uint256,
@@ -82,12 +82,13 @@ contract Strategy is BaseStrategy {
     address public constant ethYvBoostPair = address(0x9461173740D27311b176476FA27e94C681b1Ea6b); // Sushi
     address public constant ethUsdcPair    = address(0x397FF1542f962076d0BFE58eA045FfA2d347ACa0);
     
-    // Configurable preference for locking CRV in vault vs market-buying yveCRV. 
-    // Default: Buy only when yveCRV price becomes > 3% price of CRV
+    // Configurable preference for locking CRV in vault vs market-buying yvBOOST. 
+    // Default: Buy only when yvBOOST price becomes > 3% price of CRV
     uint256 public vaultBuffer          = 30;
     uint256 public constant DENOMINATOR = 1000;
 
     event UpdatedBuffer(uint256 newBuffer);
+    event BuyOrMint(bool shouldMint, uint256 projBuyAmount, uint256 projMintAmount);
 
     constructor(address _vault) public BaseStrategy(_vault) {
         // You can set these parameters on deployment to whatever you want
@@ -103,7 +104,7 @@ contract Strategy is BaseStrategy {
         uint256 _totalAssets = want.balanceOf(address(this));
         uint256 claimable = getClaimable3Crv();
         if(claimable > 0){
-            uint256 stable = quoteWithdrawFromCrv(claimable); // Calculate withdrawal amount
+            uint256 stable = quoteWithdrawFrom3Crv(claimable); // Calculate withdrawal amount
             if(stable > 0){ // Quote will revert if amount is < 1
                 uint256 estveCrv = quote(usdc, address(want), stable);
                 _totalAssets = _totalAssets.add(estveCrv);
@@ -130,7 +131,7 @@ contract Strategy is BaseStrategy {
         claimable = claimable > 0 ? claimable : IERC20(crv3).balanceOf(address(this)); // We do this to make testing harvest easier
         if (claimable > 0) {
             IyveCRV(address(want)).claim();
-            withdrawFromCrv(); // Convert 3crv to USDC
+            withdrawFrom3CrvToUSDC(); // Convert 3crv to USDC
             uint256 usdcBalance = IERC20(usdc).balanceOf(address(this));
             if(usdcBalance > 1e6){ // Don't bother to swap small amounts
                 uint256 profit = 0;
@@ -144,7 +145,7 @@ contract Strategy is BaseStrategy {
                 else{
                     // Avoid rugging strategists
                     uint256 strategistRewards = vault.balanceOf(address(this));
-                    swap(usdc, address(vault), usdcBalance);
+                    swap(usdc, yvBoost, usdcBalance);
                     uint256 swapGain = vault.balanceOf(address(this)).sub(strategistRewards);
                     if(vault.balanceOf(address(this)) > 0){
                         // Here we get our profit by burning yvBOOST shares on withdraw.
@@ -193,34 +194,40 @@ contract Strategy is BaseStrategy {
         IERC20(usdc).safeApprove(sushiswap, 0);
     }
 
-    // Here we determine if better to market-buy yveCRV or mint it with the vault
-    function shouldMint(uint256 _amountIn) public view returns (bool) {
-        // Using reserve ratios of swap pairs will allow us to compare CRV vs yveCRV price
-        // Get reserves for all 3 pairs to be used. This should be a cheaper operation than multiple getAmountsOut calls
-        Pair pair = Pair(ethUsdcPair);
-        (uint256 reserveUsdc, uint256 wethU, ) = pair.getReserves();
-        pair = Pair(ethCrvPair);
-        (uint256 wethC, uint256 reserveCrv, ) = pair.getReserves();
-        pair = Pair(ethYvBoostPair);
-        (uint256 reserveYvBoost, uint256 wethY, ) = pair.getReserves();
-
-        uint256 projectedWeth = UniswapV2Library.getAmountOut(_amountIn, reserveUsdc, wethU);
-        uint256 projectedCrv = UniswapV2Library.getAmountOut(projectedWeth, wethC, reserveCrv);
-        uint256 projectedYvBoost = UniswapV2Library.getAmountOut(projectedWeth, wethY, reserveYvBoost);
-
+    // Here we determine if better to market-buy yvBOOST or mint it with the vault
+    function shouldMint(uint256 _amountIn) public returns (bool) {
+        // Using reserve ratios of swap pairs will allow us to compare whether it's more efficient to:
+        //  1) Buy yvBOOST (unwrapped for yveCRV)
+        //  2) Buy CRV (and use to mint yveCRV 1:1)
+        address[] memory path = new address[](3);
+        path[0] = usdc;
+        path[1] = weth;
+        path[2] = yvBoost;
+        uint256[] memory amounts = ISwap(sushiswap).getAmountsOut(_amountIn, path);
+        uint256 projectedYvBoost = amounts[amounts.length - 1];
         // Convert yvBOOST to yveCRV
         uint256 projectedYveCrv = projectedYvBoost.mul(vault.pricePerShare()).div(1e18); // save some gas by hardcoding 1e18
-        
-        // Return true if CRV output plus buffer is better than yveCRV
-        return projectedCrv.mul(DENOMINATOR.add(vaultBuffer)).div(DENOMINATOR) > projectedYveCrv;
+
+        path = new address[](3);
+        path[0] = usdc;
+        path[1] = weth;
+        path[2] = crv;
+        amounts = ISwap(sushiswap).getAmountsOut(_amountIn, path);
+        uint256 projectedCrv = amounts[amounts.length - 1];
+
+        // Here we favor minting by a % value defined by "vaultBuffer"
+        bool shouldMint = projectedCrv.mul(DENOMINATOR.add(vaultBuffer)).div(DENOMINATOR) > projectedYveCrv;
+        emit BuyOrMint(shouldMint, projectedYveCrv, projectedCrv);
+
+        return shouldMint;
     }
 
-    function withdrawFromCrv() internal {
+    function withdrawFrom3CrvToUSDC() internal {
         uint256 amount = IERC20(crv3).balanceOf(address(this));
         ICurveFi(crv3Pool).remove_liquidity_one_coin(amount, 1, 0);
     }
 
-    function quoteWithdrawFromCrv(uint256 _amount) internal view returns(uint256) {
+    function quoteWithdrawFrom3Crv(uint256 _amount) internal view returns(uint256) {
         return ICurveFi(crv3Pool).calc_withdraw_one_coin(_amount, 1);
     }
 
@@ -234,7 +241,7 @@ contract Strategy is BaseStrategy {
             path[1] = weth;
             path[2] = token_out;
         }
-        uint256[] memory amounts = Swap(sushiswap).getAmountsOut(amount_in, path);
+        uint256[] memory amounts = ISwap(sushiswap).getAmountsOut(amount_in, path);
         return amounts[amounts.length - 1];
     }
 
@@ -257,7 +264,7 @@ contract Strategy is BaseStrategy {
             path[1] = weth;
             path[2] = token_out;
         }
-        Swap(sushiswap).swapExactTokensForTokens(
+        ISwap(sushiswap).swapExactTokensForTokens(
             amount_in,
             0,
             path,
@@ -270,8 +277,7 @@ contract Strategy is BaseStrategy {
         IyveCRV(address(want)).depositAll();
     }
 
-    function setBuffer(uint256 _newBuffer) external {
-        require(msg.sender == governance(), "!Governance");
+    function setBuffer(uint256 _newBuffer) external onlyGovernance {
         require(_newBuffer < DENOMINATOR, "!TooHigh");
         vaultBuffer = _newBuffer;
         emit UpdatedBuffer(_newBuffer);
