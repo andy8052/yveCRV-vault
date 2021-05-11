@@ -204,7 +204,7 @@ contract Strategy is BaseStrategy {
         path[1] = weth;
         path[2] = yvBoost;
         uint256[] memory amounts = ISwap(sushiswap).getAmountsOut(_amountIn, path);
-        uint256 projectedYvBoost = amounts[amounts.length - 1];
+        uint256 projectedYvBoost = amounts[2];
         // Convert yvBOOST to yveCRV
         uint256 projectedYveCrv = projectedYvBoost.mul(vault.pricePerShare()).div(1e18); // save some gas by hardcoding 1e18
 
@@ -213,7 +213,7 @@ contract Strategy is BaseStrategy {
         path[1] = weth;
         path[2] = crv;
         amounts = ISwap(sushiswap).getAmountsOut(_amountIn, path);
-        uint256 projectedCrv = amounts[amounts.length - 1];
+        uint256 projectedCrv = amounts[2];
 
         // Here we favor minting by a % value defined by "vaultBuffer"
         bool shouldMint = projectedCrv.mul(DENOMINATOR.add(vaultBuffer)).div(DENOMINATOR) > projectedYveCrv;
