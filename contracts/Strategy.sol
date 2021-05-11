@@ -194,8 +194,8 @@ contract Strategy is BaseStrategy {
         IERC20(usdc).safeApprove(sushiswap, 0);
     }
 
-    // Here we determine if better to market-buy yvBOOST or mint it with the vault
-    function shouldMint(uint256 _amountIn) public returns (bool) {
+    // Here we determine if better to market-buy yvBOOST or mint it via backscratcher
+    function shouldMint(uint256 _amountIn) internal returns (bool) {
         // Using reserve ratios of swap pairs will allow us to compare whether it's more efficient to:
         //  1) Buy yvBOOST (unwrapped for yveCRV)
         //  2) Buy CRV (and use to mint yveCRV 1:1)

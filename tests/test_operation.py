@@ -30,11 +30,13 @@ def test_operation(accounts, token, vault, strategy, strategist, amount, user, c
     ]
     sushi.swapExactETHForTokens(0,path,a,math.ceil(time.time()),{'from':a,'value':100e18})
     crv3.transfer(strategy, 10e20, {"from": whale_3crv})
-    strategy.harvest()
+    tx1 = strategy.harvest()
+    print(tx2.events['BuyOrMint'])
     chain.revert()
     crv3.transfer(strategy, 10e20, {"from": whale_3crv})
-    strategy.harvest()
-
+    tx2 = strategy.harvest()
+    print(tx2.events['BuyOrMint'])
+    assert False
 
     # withdrawal
     vault.withdraw({"from": user})
