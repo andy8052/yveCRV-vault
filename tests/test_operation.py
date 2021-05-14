@@ -24,19 +24,23 @@ def test_operation(accounts, token, vault, strategy, strategist, amount, user, c
     chain.snapshot()
     a = accounts[7]
     sushi = Contract("0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F")
-    path = [
+    pathBOOST = [
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",   # WETH
+        "0x9d409a0a012cfba9b15f6d4b36ac57a46966ab9a"   # CRV
+    ]
+    pathCRV = [
         "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",   # WETH
         "0xD533a949740bb3306d119CC777fa900bA034cd52"   # CRV
     ]
-    sushi.swapExactETHForTokens(0,path,a,math.ceil(time.time()),{'from':a,'value':100e18})
+    sushi.swapExactETHForTokens(0,pathCRV,a,math.ceil(time.time()),{'from':a,'value':100e18})
     crv3.transfer(strategy, 10e20, {"from": whale_3crv})
     tx1 = strategy.harvest()
-    print(tx2.events['BuyOrMint'])
+    assert tx1.events['BuyOrMint']['shouldMint'] == False
     chain.revert()
+    sushi.swapExactETHForTokens(0,pathBOOST,a,math.ceil(time.time()),{'from':a,'value':100e18})
     crv3.transfer(strategy, 10e20, {"from": whale_3crv})
     tx2 = strategy.harvest()
-    print(tx2.events['BuyOrMint'])
-    assert False
+    assert tx2.events['BuyOrMint']['shouldMint'] == True
 
     # withdrawal
     vault.withdraw({"from": user})

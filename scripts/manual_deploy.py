@@ -18,12 +18,7 @@ def main():
     # print(tx.events)
 
     # STRATEGY DEPLOY + SETUP
-    vault = Contract('0x9d409a0A012CFbA9B15F6D4B36Ac57A46966Ab9a')
-    
-    
-    #strategy = strategist.deploy(Strategy, vault)
 
-    strategy = Contract('0x43DC3A717F7436ebC924e547B586C7e2896Cef9C')
     # debt_ratio = 10_000                 # 98%
     # minDebtPerHarvest = 0             # Lower limit on debt add
     # maxDebtPerHarvest = 2 ** 256 - 1  # Upper limit on debt add
@@ -41,16 +36,31 @@ def main():
     # STRATEGY CONFIG 
 
     ## SHARER V3
-    # sharer = Contract('0x2C641e14AfEcb16b4Aa6601A40EE60c3cc792f7D')
-    # ryan = strategist.address
-    # andy = '0xfbAcB28f49954064c57f7Bd7F001B758Bc7415ba'
-    # sharer.setContributors(
+    # ms = accounts.at("0x16388463d60ffe0661cf7f1f31a7d658ac790ff7", force=True)
+    # sharer = Contract("0x2C641e14AfEcb16b4Aa6601A40EE60c3cc792f7D", owner=ms)
+    #sharerv3 = Contract("0x2C641e14AfEcb16b4Aa6601A40EE60c3cc792f7D", owner=ms)
+    a = accounts.at("0x6AFB7c9a6E8F34a3E0eC6b734942a5589A84F44C", force=True)
+    strategy = Contract("0xBfdD0b4f6Ab0D24896CAf8C892838C26C8b0F7be")
+    strategy.harvest({"from":a})
+
+    sharerv4 = Contract("0xc491599b9A20c3A2F0A85697Ee6D9434EFa9f503")
+    wavey = "0x6AFB7c9a6E8F34a3E0eC6b734942a5589A84F44C"
+    andy = "0xfbAcB28f49954064c57f7Bd7F001B758Bc7415ba"
+    patrick = "0xb3067e47d005f9A588162A710071d18098c93E04"
+    dude = "0x8Ef63b525fceF7f8662D98F77f5C9A86ae7dFE09"
+    poolpi = "0x05B7D0dfdD845c58AbC8B78b02859b447b79ed34"
+    facu = "0x334CE923420ff1aA4f272e92BF68013D092aE7B4"
+    # sharerv4.setContributors(
     #     strategy,
-    #     [ryan,andy],
-    #     [650,250], ## Ryan = 650, Andy = 250, SMS = remainder
-    #     {'from': strategist}
+    #     [wavey, andy, patrick, dude, facu, poolpi],
+    #     [450, 250, 75, 75, 75, 50],
+    #     {"from":strategist}
     # )
-    # strategy.setRewards(sharer.address, {'from': strategist})
+
+    strategy = Contract(strategy, owner=strategist)
+    
+    strategy.setRewards(sharerv4.address)
+    strategy.setKeeper("0x736D7e3c5a6CB2CE3B764300140ABF476F6CFCCF")
 
     # keep3r_manager = '0x13dAda6157Fee283723c0254F43FF1FdADe4EEd6'
     

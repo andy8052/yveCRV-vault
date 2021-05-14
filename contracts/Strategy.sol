@@ -70,7 +70,6 @@ contract Strategy is BaseStrategy {
     using Address for address;
     using SafeMath for uint256;
 
-    address public constant proxy          = address(0x9a165622a744C20E3B2CB443AeD98110a33a231b);
     address public constant yvBoost        = address(0x9d409a0A012CFbA9B15F6D4B36Ac57A46966Ab9a);
     address public constant crv            = address(0xD533a949740bb3306d119CC777fa900bA034cd52);
     address public constant usdc           = address(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
@@ -81,6 +80,7 @@ contract Strategy is BaseStrategy {
     address public constant ethCrvPair     = address(0x58Dc5a51fE44589BEb22E8CE67720B5BC5378009); // Sushi
     address public constant ethYvBoostPair = address(0x9461173740D27311b176476FA27e94C681b1Ea6b); // Sushi
     address public constant ethUsdcPair    = address(0x397FF1542f962076d0BFE58eA045FfA2d347ACa0);
+    address public proxy                   = address(0xA420A63BbEFfbda3B147d0585F1852C358e2C152);
     
     // Configurable preference for locking CRV in vault vs market-buying yvBOOST. 
     // Default: Buy only when yvBOOST price becomes > 3% price of CRV
@@ -160,7 +160,7 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    // Here we lock curve in the voter contract
+    // Here we lock curve in the voter contract. Lock doesn't require approval.
     function adjustPosition(uint256 _debtOutstanding) internal override {
         IVoterProxy(proxy).lock();
     }
@@ -252,6 +252,11 @@ contract Strategy is BaseStrategy {
             .mul(YveCrv.balanceOf(address(this)))
             .div(1e18);
         return claimable.mul(1e18).add(claimableToAdd);
+    }
+
+    // Common API used to update Yearn's StrategyProxy if needed in case of upgrades.
+    function setProxy(address _proxy) external onlyGovernance {
+        proxy = _proxy;
     }
 
     function swap(address token_in, address token_out, uint amount_in) internal {

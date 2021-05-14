@@ -8,6 +8,7 @@ def test_change_debt(gov, token, vault, strategy, strategist, amount, user):
     vault_before = token.balanceOf(vault)
     token.approve(vault.address, amount, {"from": user})
     vault.deposit(amount, {"from": user})
+    strategy.harvest()
     vault.updateStrategyDebtRatio(strategy.address, 5_000, {"from": gov})
     strategy.harvest({"from":strategist})
     highRange = (amount + vault_before) / 2 + 1e10

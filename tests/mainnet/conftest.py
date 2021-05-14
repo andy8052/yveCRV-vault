@@ -72,7 +72,7 @@ def vault(pm, gov, rewards, guardian, management, token):
 
 @pytest.fixture
 def strategy(strategist, keeper, vault, Strategy, gov, token, crv3, usdc):
-    live_strat = Contract('0x683b5C88D48FcCfB3e778FF0fA954F84cA7Ce9DF')
+    live_strat = Contract('0xBfdD0b4f6Ab0D24896CAf8C892838C26C8b0F7be')
     live_balance = token.balanceOf(live_strat)
     live_balance_3crv = crv3.balanceOf(live_strat)
     live_balance_usdc = crv3.balanceOf(live_strat)
@@ -112,7 +112,7 @@ def yveCrvContract():
 @pytest.fixture
 def proxy(strategy, gov):
     p = Contract("0x9a165622a744C20E3B2CB443AeD98110a33a231b")
-    p.approveStrategy(strategy.address, strategy.address, {"from":gov}) # Self address as gauge
+    #p.approveStrategy(strategy.address, strategy.address, {"from":gov}) # Self address as gauge
     yield p
 
 
