@@ -4,7 +4,7 @@ from brownie import Contract
 import time
 
 
-def test_operation(accounts, token, vault, strategy, strategist, amount, user, crv3, chain, whale_3crv, gov):
+def test_operation(accounts, token, eth_whale, vault, strategy, strategist, amount, user, crv3, chain, whale_3crv, gov):
     chain.snapshot()
     vault_before = token.balanceOf(vault)
     strat_before = token.balanceOf(strategy)
@@ -39,7 +39,7 @@ def test_operation(accounts, token, vault, strategy, strategist, amount, user, c
 
     params = vault.strategies(strategy)
     total_debt = params.dict()["totalDebt"]
-    assert total_debt == token.balanceOf(strategy)
+    assert total_debt <= token.balanceOf(strategy)
 
     # test strategist reward increase
     strategist_reward_after = vault.balanceOf(strategy)
@@ -55,6 +55,8 @@ def test_operation(accounts, token, vault, strategy, strategist, amount, user, c
     a3 = accounts[9]
     a4 = accounts[6]
     a5 = accounts[5]
+    a6 = accounts[3]
+    a7 = accounts[2]
     sushi = Contract("0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F")
     pathBOOST = [
         "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",   # WETH
@@ -71,15 +73,17 @@ def test_operation(accounts, token, vault, strategy, strategist, amount, user, c
     chain.revert()
 
     # Make yvBOOST more expensive
-    before = sushi.getAmountsOut(12*1e18, pathBOOST)
+    before = sushi.getAmountsOut(12*1e18, pathBOOST)[1]
     sushi.swapExactETHForTokens(0,pathBOOST,a,math.ceil(time.time()+1e6),{'from':a,'value':100e18})
     sushi.swapExactETHForTokens(0,pathBOOST,a2,math.ceil(time.time()+1e6),{'from':a2,'value':100e18})
     sushi.swapExactETHForTokens(0,pathBOOST,a3,math.ceil(time.time()+1e6),{'from':a3,'value':100e18})
-    sushi.swapExactETHForTokens(0,pathBOOST,a4,math.ceil(time.time()+1e6),{'from':a4,'value':100e18})
-    sushi.swapExactETHForTokens(0,pathBOOST,a5,math.ceil(time.time()+1e6),{'from':a5,'value':100e18})
-    after = sushi.getAmountsOut(12*1e18, pathBOOST)
+    sushi.swapExactETHForTokens(0,pathBOOST,eth_whale,math.ceil(time.time()+1e6),{'from':eth_whale,'value':1000e18})
+    after = sushi.getAmountsOut(12*1e18, pathBOOST)[1]
+    print("12 ETH gets this many yvboost before",before/1e18)
+    print("12 ETH gets this many yvboost after",after/1e18)
     assert after < before
     tx2 = strategy.harvest()
+    after = sushi.getAmountsOut(12*1e18, pathCRV)
     print(tx2.events['BuyOrMint']['shouldMint'])
     assert tx2.events['BuyOrMint']['shouldMint'] == True
     
@@ -89,4 +93,3 @@ def test_operation(accounts, token, vault, strategy, strategist, amount, user, c
     strategy.setBuffer(40, {"from": gov}) # increase buffer to 4%
     strategy.restoreApprovals({"from":gov}) # make sure reset approvals works
     strategy.setProxy("0xA420A63BbEFfbda3B147d0585F1852C358e2C152",{"from":gov})
-    chain.revert()

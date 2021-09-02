@@ -89,6 +89,7 @@ contract Strategy is BaseStrategy {
 
     event UpdatedBuffer(uint256 newBuffer);
     event BuyOrMint(bool shouldMint, uint256 projBuyAmount, uint256 projMintAmount);
+    event Money(uint256 assets, uint256 debt);
 
     constructor(address _vault) public BaseStrategy(_vault) {
         // You can set these parameters on deployment to whatever you want
@@ -101,16 +102,7 @@ contract Strategy is BaseStrategy {
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
-        uint256 _totalAssets = want.balanceOf(address(this));
-        uint256 claimable = getClaimable3Crv();
-        if(claimable > 0){
-            uint256 stable = quoteWithdrawFrom3Crv(claimable); // Calculate withdrawal amount
-            if(stable > 0){ // Quote will revert if amount is < 1
-                uint256 estveCrv = quote(usdc, address(want), stable);
-                _totalAssets = _totalAssets.add(estveCrv);
-            }
-        }
-        return _totalAssets;
+        return want.balanceOf(address(this));
     }
 
     function prepareReturn(uint256 _debtOutstanding)
@@ -129,33 +121,35 @@ contract Strategy is BaseStrategy {
         // Figure out how much want we have
         uint256 claimable = getClaimable3Crv();
         claimable = claimable > 0 ? claimable : IERC20(crv3).balanceOf(address(this)); // We do this to make testing harvest easier
-        if (claimable > 0) {
+        uint256 debt = vault.strategies(address(this)).totalDebt;
+        emit Money(estimatedTotalAssets(), debt);
+        if (claimable > 0 || estimatedTotalAssets() > debt) {
             IyveCRV(address(want)).claim();
             withdrawFrom3CrvToUSDC(); // Convert 3crv to USDC
+            // Aquire yveCRV either via mint or market-buy
             uint256 usdcBalance = IERC20(usdc).balanceOf(address(this));
-            if(usdcBalance > 1e6){ // Don't bother to swap small amounts
-                uint256 profit = 0;
-                uint256 balanceBefore = want.balanceOf(address(this));
-                // Aquire yveCRV either via mint or market-buy
+            if(usdcBalance > 0){
                 if(shouldMint(usdcBalance)){
                     swap(usdc, crv, usdcBalance);
                     deposityveCRV(); // Mint yveCRV
-                    profit = want.balanceOf(address(this)).sub(balanceBefore);
                 }
                 else{
                     // Avoid rugging strategists
                     uint256 strategistRewards = vault.balanceOf(address(this));
                     swap(usdc, yvBoost, usdcBalance);
                     uint256 swapGain = vault.balanceOf(address(this)).sub(strategistRewards);
-                    if(vault.balanceOf(address(this)) > 0){
-                        // Here we get our profit by burning yvBOOST shares on withdraw.
-                        // It would be incorrect to calculate profit by taking a diff on before/after "want"
-                        // balance. This is because the "want" balance of the strategy will be unchanged
-                        // after withdrawing to itself. Profits we realize here come frome burning shares.
-                        profit = vault.withdraw(swapGain);
+                    if(swapGain > 0){
+                        // Here we increase our want balance by withdrawing yveCRV from yvBOOST vault.
+                        vault.withdraw(swapGain);
                     }
                 }
-                _profit = profit;
+            }
+            uint256 assets = estimatedTotalAssets();
+            if(assets >= debt){
+                _profit = assets.sub(debt);
+            }
+            else{
+                _loss = debt.sub(assets);
             }
         }
     }
@@ -224,25 +218,13 @@ contract Strategy is BaseStrategy {
 
     function withdrawFrom3CrvToUSDC() internal {
         uint256 amount = IERC20(crv3).balanceOf(address(this));
-        ICurveFi(crv3Pool).remove_liquidity_one_coin(amount, 1, 0);
+        if(amount > 0){
+            ICurveFi(crv3Pool).remove_liquidity_one_coin(amount, 1, 0);
+        }
     }
 
     function quoteWithdrawFrom3Crv(uint256 _amount) internal view returns(uint256) {
         return ICurveFi(crv3Pool).calc_withdraw_one_coin(_amount, 1);
-    }
-
-    function quote(address token_in, address token_out, uint256 amount_in) internal view returns (uint256) {
-        bool is_weth = token_in == weth || token_out == weth;
-        address[] memory path = new address[](is_weth ? 2 : 3);
-        path[0] = token_in;
-        if (is_weth) {
-            path[1] = token_out;
-        } else {
-            path[1] = weth;
-            path[2] = token_out;
-        }
-        uint256[] memory amounts = ISwap(sushiswap).getAmountsOut(amount_in, path);
-        return amounts[amounts.length - 1];
     }
 
     function getClaimable3Crv() public view returns (uint256) {
@@ -259,7 +241,11 @@ contract Strategy is BaseStrategy {
         proxy = _proxy;
     }
 
-    function swap(address token_in, address token_out, uint amount_in) internal {
+    function swap(address token_in, address token_out, uint256 amount_in) internal {
+        // Don't swap if amount in is 0
+        if(amount_in == 0){
+            return;
+        }
         bool is_weth = token_in == weth || token_out == weth;
         address[] memory path = new address[](is_weth ? 2 : 3);
         path[0] = token_in;

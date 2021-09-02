@@ -1,7 +1,6 @@
 import pytest
 from brownie import config
-from brownie import Contract
-
+from brownie import Contract, interface
 
 @pytest.fixture
 def gov(accounts):
@@ -67,25 +66,29 @@ def amount(accounts, token, gov):
 
 @pytest.fixture
 def vault(pm, gov, rewards, guardian, management, token):
-    yield Contract('0x9d409a0A012CFbA9B15F6D4B36Ac57A46966Ab9a') 
+    yield interface.Vault035('0x9d409a0A012CFbA9B15F6D4B36Ac57A46966Ab9a') 
 
+@pytest.fixture
+def eth_whale(accounts):
+    yield accounts.at("0x53d284357ec70cE289D6D64134DfAc8E511c8a3D", force=True)
 
 @pytest.fixture
 def strategy(strategist, keeper, vault, Strategy, gov, token, crv3, usdc):
-    live_strat = Contract('0xBfdD0b4f6Ab0D24896CAf8C892838C26C8b0F7be')
+    live_strat = Contract('0x2923a58c1831205C854DBEa001809B194FDb3Fa5')
+    live_strat.harvest({"from":gov})
     live_balance = token.balanceOf(live_strat)
     live_balance_3crv = crv3.balanceOf(live_strat)
     live_balance_usdc = crv3.balanceOf(live_strat)
     new_strategy = strategist.deploy(Strategy, vault)
     vault.migrateStrategy(live_strat, new_strategy, {"from":gov})
-    live_strat.harvest({"from":gov})
+    
     assert token.balanceOf(live_strat) == 0
     assert crv3.balanceOf(live_strat) == 0
     assert usdc.balanceOf(live_strat) == 0
     assert token.balanceOf(new_strategy) == live_balance
     assert crv3.balanceOf(new_strategy) == live_balance_3crv
     assert usdc.balanceOf(new_strategy) == live_balance_usdc
-    new_strategy.setKeeper(keeper)
+    new_strategy.setKeeper(keeper, {"from":gov})
     yield new_strategy
 
 
@@ -142,8 +145,11 @@ def sushiswap(accounts):
 
 @pytest.fixture
 def not_banteg(accounts):
-    yield accounts.at("0x0035Fc5208eF989c28d47e552E92b0C507D2B318", force=True) # Definitely not banteg
+    yield accounts.at("0x0035Fc5208eF989c28d47e552E92b0C507D2B318", force=True)
 
+@pytest.fixture
+def klim(accounts):
+    yield accounts.at("0x279a7DBFaE376427FFac52fcb0883147D42165FF", force=True) # airdropper
 
 @pytest.fixture
 def weth_amount(accounts, weth, gov):

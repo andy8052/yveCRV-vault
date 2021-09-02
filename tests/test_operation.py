@@ -47,6 +47,7 @@ def test_operation(accounts, token, vault, strategy, strategist, amount, user, c
     assert token.balanceOf(user) != 0
     strategy.setBuffer(40, {"from": gov}) # increase buffer to 4%
     strategy.restoreApprovals({"from":gov}) # make sure reset approvals works
+    strategy.setProxy("0xA420A63BbEFfbda3B147d0585F1852C358e2C152",{"from":gov})
     chain.revert()
 
 def test_emergency_exit(accounts, token, vault, strategy, strategist, amount, user):
