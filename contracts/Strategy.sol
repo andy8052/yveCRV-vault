@@ -89,7 +89,6 @@ contract Strategy is BaseStrategy {
 
     event UpdatedBuffer(uint256 newBuffer);
     event BuyOrMint(bool shouldMint, uint256 projBuyAmount, uint256 projMintAmount);
-    event Money(uint256 assets, uint256 debt);
 
     constructor(address _vault) public BaseStrategy(_vault) {
         // You can set these parameters on deployment to whatever you want
@@ -122,25 +121,29 @@ contract Strategy is BaseStrategy {
         uint256 claimable = getClaimable3Crv();
         claimable = claimable > 0 ? claimable : IERC20(crv3).balanceOf(address(this)); // We do this to make testing harvest easier
         uint256 debt = vault.strategies(address(this)).totalDebt;
-        emit Money(estimatedTotalAssets(), debt);
         if (claimable > 0 || estimatedTotalAssets() > debt) {
             IyveCRV(address(want)).claim();
             withdrawFrom3CrvToUSDC(); // Convert 3crv to USDC
-            // Aquire yveCRV either via mint or market-buy
             uint256 usdcBalance = IERC20(usdc).balanceOf(address(this));
             if(usdcBalance > 0){
+                // Aquire yveCRV either via:
+                //  1) buy CRV and mint or 
+                //  2) market-buy yvBOOST and unwrap
                 if(shouldMint(usdcBalance)){
                     swap(usdc, crv, usdcBalance);
-                    deposityveCRV(); // Mint yveCRV
+                    deposityveCRV(); // Mints yveCRV
                 }
                 else{
-                    // Avoid rugging strategists
+                    // Avoid rugging pre-existing strategist rewards (which are denominated in same token we're swapping fore)
                     uint256 strategistRewards = vault.balanceOf(address(this));
                     swap(usdc, yvBoost, usdcBalance);
                     uint256 swapGain = vault.balanceOf(address(this)).sub(strategistRewards);
                     if(swapGain > 0){
-                        // Here we increase our want balance by withdrawing yveCRV from yvBOOST vault.
+                        // Here we burn our new vault shares. But because strategy is withdrawing to itself,
+                        // the want balance will not increase. Overall strategy debt is reduced, while want balance stays the same.
                         vault.withdraw(swapGain);
+                        // The withdraw action above reduces the strategy's debt, so let's update this value we set earlier.
+                        debt = vault.strategies(address(this)).totalDebt;
                     }
                 }
             }

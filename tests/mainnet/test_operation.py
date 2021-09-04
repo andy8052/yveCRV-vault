@@ -14,32 +14,49 @@ def test_operation(accounts, token, eth_whale, vault, strategy, strategist, amou
     assert token.balanceOf(vault.address) == amount + vault_before
 
     # Move funds to strat
-    strategy.harvest({"from":strategist})
+    tx= strategy.harvest({"from":strategist})
+    print("-- Harvest no profit --")
+    print(tx.events['Harvested'])
+    chain.sleep(60*60*6) # sleep to increase pps
+    chain.mine(1)
     assert token.balanceOf(strategy.address) == amount + vault_before + strat_before
 
     # Done to fix the UniswapV2: K issue
     pairs = [strategy.ethCrvPair(), strategy.ethYvBoostPair(), strategy.ethUsdcPair()]
     for pair in pairs:
-        Contract.from_explorer(pair, owner=strategist).sync()
+        Contract(pair, owner=strategist).sync()
 
     # harvest to accrue strategist reward as this is part of our test
     # to make sure that these yvBOOST shares are separated from the purhcased
     # amount and not used to withdraw yveCRV from vault
     strategist_reward_before = vault.balanceOf(strategy)
     crv3.transfer(strategy, 10e20, {"from": whale_3crv})
-    strategy.harvest({"from":strategist})
+    tx = strategy.harvest({"from":strategist})
+    print()
+    print("-- Harvest with profit --")
+    print(tx.events['Harvested'])
+    print(tx.events['Money'])
+    print(tx.events['Test'])
     chain.sleep(60*60*6) # sleep to increase pps
     chain.mine(1)
+    params = vault.strategies(strategy)
+    total_debt = params.dict()["totalDebt"]
+    assert total_debt == token.balanceOf(strategy)
 
     strategist_reward_before = vault.balanceOf(strategy)
-    crv3.transfer(strategy, 10e20, {"from": whale_3crv})
-    strategy.harvest({"from":strategist})
+    token.transfer(strategy, 10e20, {"from": user})
+    print()
+    print("-- Harvest with profit 2--")
+    tx = strategy.harvest({"from":strategist})
+    print(tx.events['Harvested'])
+    print(tx.events['Money'])
+    print(tx.events['Test'])
     chain.sleep(60*60*6) # sleep to increase pps
     chain.mine(1)
 
     params = vault.strategies(strategy)
     total_debt = params.dict()["totalDebt"]
-    assert total_debt <= token.balanceOf(strategy)
+    assert total_debt == token.balanceOf(strategy)
 
     # test strategist reward increase
     strategist_reward_after = vault.balanceOf(strategy)

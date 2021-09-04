@@ -59,7 +59,7 @@ def amount(accounts, token, gov):
     # In order to get some funds for the token you are about to use,
     # it impersonate an exchange address to use it's funds.
     reserve = accounts.at("0x10B47177E92Ef9D5C6059055d92DdF6290848991", force=True)
-    token.transfer(accounts[0], amount, {"from": reserve})
+    token.transfer(accounts[0], amount*2, {"from": reserve})
     token.transfer(gov, amount, {"from": reserve})
     yield amount
 
