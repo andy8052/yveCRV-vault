@@ -66,22 +66,42 @@ def amount(accounts, token, gov):
 
 @pytest.fixture
 def vault(pm, gov, rewards, guardian, management, token):
-    yield interface.Vault035('0x9d409a0A012CFbA9B15F6D4B36Ac57A46966Ab9a') 
+    yield interface.Vault035('0x9d409a0A012CFbA9B15F6D4B36Ac57A46966Ab9a')
 
 @pytest.fixture
 def eth_whale(accounts):
     yield accounts.at("0x53d284357ec70cE289D6D64134DfAc8E511c8a3D", force=True)
 
+
 @pytest.fixture
-def strategy(strategist, keeper, vault, Strategy, gov, token, crv3, usdc):
+def trade_factory():
+    yield Contract("0xBf26Ff7C7367ee7075443c4F95dEeeE77432614d")
+
+
+@pytest.fixture
+def ymechs_safe():
+    yield Contract("0x2C01B4AD51a67E2d8F02208F54dF9aC4c0B778B6")
+
+
+@pytest.fixture
+def sushi_swapper(trade_factory, ymechs_safe):
+    yield Contract("0x55dcee9332848AFcF660CE6a2116D83Dd7a71B60")
+
+
+@pytest.fixture
+def strategy(strategist, keeper, vault, Strategy, gov, token, crv3, usdc,
+    trade_factory, ymechs_safe):
+
     live_strat = Contract('0x2923a58c1831205C854DBEa001809B194FDb3Fa5')
     live_strat.harvest({"from":gov})
     live_balance = token.balanceOf(live_strat)
     live_balance_3crv = crv3.balanceOf(live_strat)
     live_balance_usdc = crv3.balanceOf(live_strat)
-    new_strategy = strategist.deploy(Strategy, vault)
+    new_strategy = strategist.deploy(Strategy, vault, trade_factory)
     vault.migrateStrategy(live_strat, new_strategy, {"from":gov})
-    
+
+    trade_factory.grantRole(trade_factory.STRATEGY(), new_strategy, {"from": ymechs_safe, "gas_price": "0 gwei"})
+
     assert token.balanceOf(live_strat) == 0
     assert crv3.balanceOf(live_strat) == 0
     assert usdc.balanceOf(live_strat) == 0
