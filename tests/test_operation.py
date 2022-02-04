@@ -18,7 +18,7 @@ def test_operation(accounts, token, vault, strategy, strategist, amount, user, c
     # Done to fix the UniswapV2: K issue
     pairs = [strategy.ethCrvPair(), strategy.ethYvBoostPair(), strategy.ethUsdcPair()]
     for pair in pairs:
-        Contract.from_explorer(pair, owner=strategist).sync()
+        Contract(pair, owner=strategist).sync()
 
     # harvest using BUY route
     chain.snapshot()
