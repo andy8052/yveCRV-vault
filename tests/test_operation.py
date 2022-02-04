@@ -85,13 +85,28 @@ def test_change_debt(gov, token, vault, strategy, strategist, amount, user):
     # assert token.balanceOf(strategy.address) == amount / 2
 
 
-def test_sweep(gov, vault, strategy, token, amount, weth, weth_amount):
+def test_airdrop(gov, vault, strategy, token, amount, weth, weth_amount, crv3, whale_3crv):
+    # Strategy want token doesn't work
+    token.transfer(strategy, amount, {"from": gov})
+    crv3.transfer(strategy, 1, {"from": whale_3crv}) # some dust so that we can harvest
+    assert token.address == strategy.want()
+    assert token.balanceOf(strategy) > 0
+    
+    tx = strategy.harvest()
+    print(tx.events["Harvested"])
+    assert tx.events["Harvested"]["profit"] > 1e10
+
+def test_sweep(gov, vault, strategy, token, amount, weth, weth_amount, crv3, whale_3crv):
     # Strategy want token doesn't work
     token.transfer(strategy, amount, {"from": gov})
     assert token.address == strategy.want()
     assert token.balanceOf(strategy) > 0
     with brownie.reverts("!want"):
         strategy.sweep(token, {"from": gov})
+
+    # This should pass, since it is no longer protected
+    crv3.transfer(strategy, 1e18, {"from": whale_3crv})
+    strategy.sweep(crv3, {"from": gov})
 
     # Vault share token doesn't work
     with brownie.reverts("!shares"):
