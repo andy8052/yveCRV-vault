@@ -70,17 +70,17 @@ contract Strategy is BaseStrategy {
     using Address for address;
     using SafeMath for uint256;
 
-    address internal constant yvBoost        = 0x9d409a0A012CFbA9B15F6D4B36Ac57A46966Ab9a;
-    address internal constant crv            = 0xD533a949740bb3306d119CC777fa900bA034cd52;
-    address internal constant usdc           = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
-    address internal constant crv3           = 0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490;
-    address internal constant crv3Pool       = 0xbEbc44782C7dB0a1A60Cb6fe97d0b483032FF1C7;
-    address internal constant weth           = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-    address internal constant sushiswap      = 0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F;
-    address internal constant ethCrvPair     = 0x58Dc5a51fE44589BEb22E8CE67720B5BC5378009; // Sushi
-    address internal constant ethYvBoostPair = 0x9461173740D27311b176476FA27e94C681b1Ea6b; // Sushi
-    address internal constant ethUsdcPair    = 0x397FF1542f962076d0BFE58eA045FfA2d347ACa0;
-    address internal proxy                   = 0xA420A63BbEFfbda3B147d0585F1852C358e2C152;
+    address public constant yvBoost        = 0x9d409a0A012CFbA9B15F6D4B36Ac57A46966Ab9a;
+    address public constant crv            = 0xD533a949740bb3306d119CC777fa900bA034cd52;
+    address public constant usdc           = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    address public constant crv3           = 0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490;
+    address public constant crv3Pool       = 0xbEbc44782C7dB0a1A60Cb6fe97d0b483032FF1C7;
+    address public constant weth           = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+    address public constant sushiswap      = 0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F;
+    address public constant ethCrvPair     = 0x58Dc5a51fE44589BEb22E8CE67720B5BC5378009; // Sushi
+    address public constant ethYvBoostPair = 0x9461173740D27311b176476FA27e94C681b1Ea6b; // Sushi
+    address public constant ethUsdcPair    = 0x397FF1542f962076d0BFE58eA045FfA2d347ACa0;
+    address public proxy                   = 0xA420A63BbEFfbda3B147d0585F1852C358e2C152;
 
     // Configurable preference for locking CRV in vault vs market-buying yvBOOST.
     // Default: Buy only when yvBOOST price becomes > 3% price of CRV
@@ -121,7 +121,7 @@ contract Strategy is BaseStrategy {
         uint256 claimable = getClaimable3Crv();
         claimable = claimable > 0 ? claimable : IERC20(crv3).balanceOf(address(this)); // We do this to make testing harvest easier
         uint256 debt = vault.strategies(address(this)).totalDebt;
-        if (claimable > 0) { // Why wouldn't we claim if there is a loss?
+        if (claimable > 0 || estimatedTotalAssets() > debt) {
             IyveCRV(address(want)).claim();
             withdrawFrom3CrvToUSDC(); // Convert 3crv to USDC
             uint256 usdcBalance = IERC20(usdc).balanceOf(address(this));
