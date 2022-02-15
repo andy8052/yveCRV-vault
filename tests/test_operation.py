@@ -38,7 +38,7 @@ def test_operation(accounts, token, vault, strategy, strategist, amount, user, c
     assert tx1.events['BuyOrMint']['shouldMint'] == False
     chain.revert()
     sushi.swapExactETHForTokens(0,pathBOOST,a,math.ceil(time.time()),{'from':a,'value':100e18})
-    crv3.transfer(strategy, 10e20, {"from": whale_3crv})
+    crv3.transfer(strategy, 1e20, {"from": whale_3crv})
     tx2 = strategy.harvest()
     assert tx2.events['BuyOrMint']['shouldMint'] == True
 

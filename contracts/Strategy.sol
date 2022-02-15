@@ -91,7 +91,7 @@ contract Strategy is BaseStrategy {
     event BuyOrMint(bool shouldMint, uint256 projBuyAmount, uint256 projMintAmount);
 
     constructor(address _vault) public BaseStrategy(_vault) {
-        // You can set these parameters on deployment to whatever you want
+        healthCheck = address(0xDDCea799fF1699e98EDF118e0629A974Df7DF012);
         IERC20(crv).safeApprove(address(want), type(uint256).max);
         IERC20(usdc).safeApprove(sushiswap, type(uint256).max);
     }
