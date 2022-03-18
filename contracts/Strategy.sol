@@ -16,7 +16,19 @@ import {
     Address
 } from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 
-import "./ySwap/SwapperEnabled.sol";
+
+interface ITradeFactory {
+    function enable(address, address) external;
+}
+interface ISwap {
+    function getAmountsOut(
+        uint amountIn, 
+        address[] memory path
+    ) 
+    external view returns (
+        uint[] memory amounts
+    );
+}
 
 interface IVoterProxy {
     function lock() external;
@@ -31,15 +43,16 @@ interface IyveCRV {
     function depositAll() external;
 }
 
-contract Strategy is BaseStrategy, SwapperEnabled {
+contract Strategy is BaseStrategy {
     using SafeERC20 for IERC20;
     using Address for address;
     using SafeMath for uint256;
 
-    address internal constant crv3 = 0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490;
     address internal proxy = 0xA420A63BbEFfbda3B147d0585F1852C358e2C152;
+    address public tradeFactory = address(0);
+    IERC20 public constant crv3 = IERC20(0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490);
 
-    constructor(address _vault, address _tradeFactory) BaseStrategy(_vault) SwapperEnabled(_tradeFactory) public {
+    constructor(address _vault) BaseStrategy(_vault) public {
     }
 
     function name() external view override returns (string memory) {
@@ -58,6 +71,7 @@ contract Strategy is BaseStrategy, SwapperEnabled {
             uint256 _loss,
             uint256 _debtPayment
         ) {
+        require(tradeFactory != address(0), "Trade factory must be set.");
 
         if (_debtOutstanding > 0) {
             (_debtPayment, _loss) = liquidatePosition(_debtOutstanding);
@@ -68,17 +82,6 @@ contract Strategy is BaseStrategy, SwapperEnabled {
             IyveCRV(address(want)).claim();
         }
 
-        uint256 _balance3crv = balanceOf3crv();
-        if (_balance3crv > 0) {
-            uint256 _allowance = _tradeFactoryAllowance(crv3);
-            _createTrade(
-                crv3,
-                address(want),
-                _balance3crv - _allowance,
-                block.timestamp + 604800
-            );
-        }
-
         uint256 debt = vault.strategies(address(this)).totalDebt;
         uint256 assets = estimatedTotalAssets();
         if (assets >= debt){
@@ -86,7 +89,6 @@ contract Strategy is BaseStrategy, SwapperEnabled {
         } else {
             _loss = debt.sub(assets);
         }
-
     }
 
     // Here we lock curve in the voter contract. Lock doesn't require approval.
@@ -108,20 +110,42 @@ contract Strategy is BaseStrategy, SwapperEnabled {
         }
     }
 
+    function liquidateAllPositions()
+        internal
+        override
+        returns (uint256 _amountFreed)
+    {
+        (_amountFreed, ) = liquidatePosition(estimatedTotalAssets());
+    }
+
     function prepareMigration(address _newStrategy) internal override {
         uint256 balance3crv = balanceOf3crv();
         if(balance3crv > 0){
-            IERC20(crv3).safeTransfer(_newStrategy, balance3crv);
+            crv3.safeTransfer(_newStrategy, balance3crv);
         }
 
-        uint256 balanceYveCrv = IERC20(address(want)).balanceOf(address(this));
+        uint256 balanceYveCrv = want.balanceOf(address(this));
         if(balanceYveCrv > 0) {
-            IERC20(address(want)).safeTransfer(_newStrategy, balanceYveCrv);
+            IERC20(want).safeTransfer(_newStrategy, balanceYveCrv);
         }
     }
 
+    function ethToWant(uint256 _amtInWei)
+        public
+        view
+        virtual
+        override
+        returns (uint256)
+    {
+        ISwap sushiRouter = ISwap(0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F);
+        address[] memory path = new address[](2);
+        path[0] = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2); // WETH
+        path[1] = address(0x9d409a0A012CFbA9B15F6D4B36Ac57A46966Ab9a); // yvBOOST
+        return sushiRouter.getAmountsOut(_amtInWei, path)[1];
+    }
+
     function balanceOf3crv() public view returns (uint256) {
-        return IERC20(crv3).balanceOf(address(this));
+        return crv3.balanceOf(address(this));
     }
 
     function getClaimable3Crv() public view returns (uint256) {
@@ -138,10 +162,6 @@ contract Strategy is BaseStrategy, SwapperEnabled {
         proxy = _proxy;
     }
 
-    function deposityveCRV() internal {
-        IyveCRV(address(want)).depositAll();
-    }
-
     // internal helpers
     function protectedTokens()
         internal
@@ -149,4 +169,27 @@ contract Strategy is BaseStrategy, SwapperEnabled {
         override
         returns (address[] memory)
     {}
+
+    // ----------------- YSWAPS FUNCTIONS ---------------------
+
+    function setTradeFactory(address _tradeFactory) external onlyGovernance {
+        if (tradeFactory != address(0)) {
+            _removeTradeFactoryPermissions();
+        }
+
+        // approve and set up trade factory
+        crv3.safeApprove(_tradeFactory, type(uint256).max);
+        ITradeFactory tf = ITradeFactory(_tradeFactory);
+        tf.enable(address(crv3), address(want));
+        tradeFactory = _tradeFactory;
+    }
+
+    function removeTradeFactoryPermissions() external onlyEmergencyAuthorized {
+        _removeTradeFactoryPermissions();
+
+    }
+    function _removeTradeFactoryPermissions() internal {
+        crv3.safeApprove(tradeFactory, 0);
+        tradeFactory = address(0);
+    }
 }
