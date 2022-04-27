@@ -1,8 +1,3 @@
-import brownie
-from helpers import showBalances
-from brownie import Contract
-import time
-
 def test_triggers(gov, vault, strategy, token, amount, weth, weth_amount, user, strategist):
     # Deposit to the vault and harvest
     token.approve(vault.address, amount, {"from": user})
