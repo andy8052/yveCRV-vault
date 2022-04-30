@@ -75,8 +75,7 @@ def eth_whale(accounts):
 
 @pytest.fixture
 def trade_factory():
-    yield Contract("0xBf26Ff7C7367ee7075443c4F95dEeeE77432614d")
-
+    yield Contract("0x99d8679bE15011dEAD893EB4F5df474a4e6a8b29")
 
 @pytest.fixture
 def ymechs_safe():
@@ -92,15 +91,17 @@ def sushi_swapper(trade_factory, ymechs_safe):
 def strategy(strategist, keeper, vault, Strategy, gov, token, crv3, usdc,
     trade_factory, ymechs_safe):
 
-    live_strat = Contract('0x2923a58c1831205C854DBEa001809B194FDb3Fa5')
+    live_strat = Contract('0xd7240B32d24B814fE52946cD44d94a2e3532E63d')
+    live_strat.setDoHealthCheck(False, {"from": gov})
     live_strat.harvest({"from":gov})
     live_balance = token.balanceOf(live_strat)
     live_balance_3crv = crv3.balanceOf(live_strat)
     live_balance_usdc = crv3.balanceOf(live_strat)
-    new_strategy = strategist.deploy(Strategy, vault, trade_factory)
+    new_strategy = strategist.deploy(Strategy, vault)
     vault.migrateStrategy(live_strat, new_strategy, {"from":gov})
 
-    trade_factory.grantRole(trade_factory.STRATEGY(), new_strategy, {"from": ymechs_safe, "gas_price": "0 gwei"})
+    trade_factory.grantRole(trade_factory.STRATEGY(), new_strategy.address, {"from": ymechs_safe, "gas_price": "0 gwei"})
+    new_strategy.setTradeFactory(trade_factory.address, {"from": gov})
 
     assert token.balanceOf(live_strat) == 0
     assert crv3.balanceOf(live_strat) == 0
@@ -109,6 +110,9 @@ def strategy(strategist, keeper, vault, Strategy, gov, token, crv3, usdc,
     assert crv3.balanceOf(new_strategy) == live_balance_3crv
     assert usdc.balanceOf(new_strategy) == live_balance_usdc
     new_strategy.setKeeper(keeper, {"from":gov})
+    # TODO: Check if this is the right things to do. The new strategy liquidates more funds compared to the old strategy.
+    # Possible bug?
+    new_strategy.harvest({"from":gov})
     yield new_strategy
 
 
@@ -160,7 +164,7 @@ def sushiswap_crv(accounts):
 
 
 @pytest.fixture
-def sushiswap(accounts):
+def sushiswap(Contract):
     yield Contract("0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F")
 
 @pytest.fixture
@@ -179,3 +183,19 @@ def weth_amount(accounts, weth, gov):
     reserve = accounts.at("0x2F0b23f53734252Bda2277357e97e1517d6B042A", force=True)
     weth.transfer(gov, amount, {"from": reserve})
     yield amount
+
+@pytest.fixture(scope="session")
+def RELATIVE_APPROX():
+    yield 1e-5
+
+@pytest.fixture(scope="module")
+def multicall_swapper(interface):
+    yield interface.MultiCallOptimizedSwapper(
+        "0xB2F65F254Ab636C96fb785cc9B4485cbeD39CDAA"
+    )
+
+@pytest.fixture(scope="module")
+def curvefi_3crv_pool(interface):
+    yield interface.CurveFiPool(
+        "0xbEbc44782C7dB0a1A60Cb6fe97d0b483032FF1C7"
+    )
