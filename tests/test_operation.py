@@ -17,7 +17,7 @@ def test_operation(accounts, token, vault, strategy, strategist, amount, user, c
     # Done to fix the UniswapV2: K issue
     pairs = [strategy.ethCrvPair(), strategy.ethYvBoostPair(), strategy.ethUsdcPair()]
     for pair in pairs:
-        Contract.from_explorer(pair, owner=strategist).sync()
+        Contract(pair, owner=strategist).sync()
 
     # harvest using BUY route
     chain.snapshot()
@@ -37,7 +37,7 @@ def test_operation(accounts, token, vault, strategy, strategist, amount, user, c
     assert tx1.events['BuyOrMint']['shouldMint'] == False
     chain.revert()
     sushi.swapExactETHForTokens(0,pathBOOST,a,math.ceil(time.time()),{'from':a,'value':100e18})
-    crv3.transfer(strategy, 10e20, {"from": whale_3crv})
+    crv3.transfer(strategy, 1e20, {"from": whale_3crv})
     tx2 = strategy.harvest()
     assert tx2.events['BuyOrMint']['shouldMint'] == True
 
@@ -84,13 +84,28 @@ def test_change_debt(gov, token, vault, strategy, strategist, amount, user):
     # assert token.balanceOf(strategy.address) == amount / 2
 
 
-def test_sweep(gov, vault, strategy, token, amount, weth, weth_amount):
+def test_airdrop(gov, vault, strategy, token, amount, weth, weth_amount, crv3, whale_3crv):
+    # Strategy want token doesn't work
+    token.transfer(strategy, amount, {"from": gov})
+    crv3.transfer(strategy, 1, {"from": whale_3crv}) # some dust so that we can harvest
+    assert token.address == strategy.want()
+    assert token.balanceOf(strategy) > 0
+    
+    tx = strategy.harvest()
+    print(tx.events["Harvested"])
+    assert tx.events["Harvested"]["profit"] > 1e10
+
+def test_sweep(gov, vault, strategy, token, amount, weth, weth_amount, crv3, whale_3crv):
     # Strategy want token doesn't work
     token.transfer(strategy, amount, {"from": gov})
     assert token.address == strategy.want()
     assert token.balanceOf(strategy) > 0
     with brownie.reverts("!want"):
         strategy.sweep(token, {"from": gov})
+
+    # This should pass, since it is no longer protected
+    crv3.transfer(strategy, 1e18, {"from": whale_3crv})
+    strategy.sweep(crv3, {"from": gov})
 
     # Vault share token doesn't work
     with brownie.reverts("!shares"):
