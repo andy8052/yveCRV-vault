@@ -1,8 +1,3 @@
-import brownie
-from helpers import showBalances
-from brownie import Contract
-import time
-
 def test_change_debt(gov, token, vault, strategy, strategist, amount, user):
     # Deposit to the vault and harvest
     vault_before = token.balanceOf(vault)

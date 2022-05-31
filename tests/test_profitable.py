@@ -1,16 +1,12 @@
-import brownie
-from helpers import showBalances
+from .helpers import showBalances
 from brownie import Contract
-import time
 
 def test_profitable_harvest(
-    gov,
     vault,
     strategy,
     strategist,
     token,
     amount,
-    weth_amount,
     yveCrv,
     weth,
     usdc,

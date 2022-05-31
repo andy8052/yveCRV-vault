@@ -1,7 +1,4 @@
-import brownie, math, time
-from helpers import showBalances
 from brownie import Contract
-import time
 
 
 def test_operation(accounts, token, vault, yveCrv, strategy, strategist, amount, user, crv3, chain, whale_3crv, gov, klim):

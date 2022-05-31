@@ -1,19 +1,14 @@
-import brownie
-from helpers import showBalances
+from .helpers import showBalances
 from brownie import Contract
 import time
 
 def test_swap_over_mint(
-    gov,
     vault,
     strategy,
     strategist,
     token,
     amount,
-    weth_amount,
-    yveCrv,
     weth,
-    usdc,
     crv3,
     crv,
     chain,
