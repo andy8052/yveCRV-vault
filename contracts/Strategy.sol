@@ -22,9 +22,9 @@ interface ITradeFactory {
 }
 interface ISwap {
     function getAmountsOut(
-        uint amountIn, 
+        uint amountIn,
         address[] memory path
-    ) 
+    )
     external view returns (
         uint[] memory amounts
     );
@@ -48,9 +48,9 @@ contract Strategy is BaseStrategy {
     using Address for address;
     using SafeMath for uint256;
 
+    address internal tradeFactory;
     address internal proxy = 0xA420A63BbEFfbda3B147d0585F1852C358e2C152;
-    address public tradeFactory = address(0);
-    IERC20 public constant crv3 = IERC20(0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490);
+    IERC20 internal constant crv3 = IERC20(0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490);
 
     constructor(address _vault) BaseStrategy(_vault) public {
     }
@@ -71,7 +71,7 @@ contract Strategy is BaseStrategy {
             uint256 _loss,
             uint256 _debtPayment
         ) {
-        require(tradeFactory != address(0), "Trade factory must be set.");
+        require(tradeFactory != address(0), "!tf");
 
         if (_debtOutstanding > 0) {
             (_debtPayment, _loss) = liquidatePosition(_debtOutstanding);
