@@ -16,28 +16,18 @@ import {
     Address
 } from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 
+
+interface ITradeFactory {
+    function enable(address, address) external;
+}
 interface ISwap {
-    function swapExactTokensForTokens(
-        uint256,
-        uint256,
-        address[] calldata,
-        address,
-        uint256
-    ) external;
-    function getAmountsOut(uint amountIn, address[] memory path) external view returns (uint[] memory amounts);
-}
-
-interface Pair {
-    function getReserves() external view returns (
-        uint112,
-        uint112,
-        uint32
+    function getAmountsOut(
+        uint amountIn, 
+        address[] memory path
+    ) 
+    external view returns (
+        uint[] memory amounts
     );
-}
-
-interface ICurveFi {
-    function calc_withdraw_one_coin(uint256, int128) external view returns(uint256);
-    function remove_liquidity_one_coin(uint256, int128, uint256) external;
 }
 
 interface IVoterProxy {
@@ -53,47 +43,16 @@ interface IyveCRV {
     function depositAll() external;
 }
 
-library UniswapV2Library {
-    using SafeMath for uint;
-    function getAmountOut(uint amountIn, uint reserveIn, uint reserveOut) internal pure returns (uint amountOut) {
-        require(amountIn > 0, 'UniswapV2Library: INSUFFICIENT_INPUT_AMOUNT');
-        require(reserveIn > 0 && reserveOut > 0, 'UniswapV2Library: INSUFFICIENT_LIQUIDITY');
-        uint amountInWithFee = amountIn.mul(997);
-        uint numerator = amountInWithFee.mul(reserveOut);
-        uint denominator = reserveIn.mul(1000).add(amountInWithFee);
-        amountOut = numerator / denominator;
-    }
-}
-
 contract Strategy is BaseStrategy {
     using SafeERC20 for IERC20;
     using Address for address;
     using SafeMath for uint256;
 
-    address public constant yvBoost        = 0x9d409a0A012CFbA9B15F6D4B36Ac57A46966Ab9a;
-    address public constant crv            = 0xD533a949740bb3306d119CC777fa900bA034cd52;
-    address public constant usdc           = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
-    address public constant crv3           = 0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490;
-    address public constant crv3Pool       = 0xbEbc44782C7dB0a1A60Cb6fe97d0b483032FF1C7;
-    address public constant weth           = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-    address public constant sushiswap      = 0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F;
-    address public constant ethCrvPair     = 0x58Dc5a51fE44589BEb22E8CE67720B5BC5378009; // Sushi
-    address public constant ethYvBoostPair = 0x9461173740D27311b176476FA27e94C681b1Ea6b; // Sushi
-    address public constant ethUsdcPair    = 0x397FF1542f962076d0BFE58eA045FfA2d347ACa0;
-    address public proxy                   = 0xA420A63BbEFfbda3B147d0585F1852C358e2C152;
+    address internal proxy = 0xA420A63BbEFfbda3B147d0585F1852C358e2C152;
+    address public tradeFactory = address(0);
+    IERC20 public constant crv3 = IERC20(0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490);
 
-    // Configurable preference for locking CRV in vault vs market-buying yvBOOST.
-    // Default: Buy only when yvBOOST price becomes > 3% price of CRV
-    uint256 public vaultBuffer          = 30;
-    uint256 internal constant DENOMINATOR = 1000;
-
-    event UpdatedBuffer(uint256 newBuffer);
-    event BuyOrMint(bool shouldMint, uint256 projBuyAmount, uint256 projMintAmount);
-
-    constructor(address _vault) public BaseStrategy(_vault) {
-        healthCheck = address(0xDDCea799fF1699e98EDF118e0629A974Df7DF012);
-        IERC20(crv).safeApprove(address(want), type(uint256).max);
-        IERC20(usdc).safeApprove(sushiswap, type(uint256).max);
+    constructor(address _vault) BaseStrategy(_vault) public {
     }
 
     function name() external view override returns (string memory) {
@@ -111,49 +70,24 @@ contract Strategy is BaseStrategy {
             uint256 _profit,
             uint256 _loss,
             uint256 _debtPayment
-        )
-    {
+        ) {
+        require(tradeFactory != address(0), "Trade factory must be set.");
+
         if (_debtOutstanding > 0) {
             (_debtPayment, _loss) = liquidatePosition(_debtOutstanding);
         }
 
-        // Figure out how much want we have
-        uint256 claimable = getClaimable3Crv();
-        claimable = claimable > 0 ? claimable : IERC20(crv3).balanceOf(address(this)); // We do this to make testing harvest easier
-        uint256 debt = vault.strategies(address(this)).totalDebt;
-        if (claimable > 0 || estimatedTotalAssets() > debt) {
+        uint256 _claimable = getClaimable3Crv();
+        if (_claimable > 0) {
             IyveCRV(address(want)).claim();
-            withdrawFrom3CrvToUSDC(); // Convert 3crv to USDC
-            uint256 usdcBalance = IERC20(usdc).balanceOf(address(this));
-            if(usdcBalance > 0){
-                // Aquire yveCRV either via:
-                //  1) buy CRV and mint or
-                //  2) market-buy yvBOOST and unwrap
-                if(shouldMint(usdcBalance)){
-                    swap(usdc, crv, usdcBalance);
-                    deposityveCRV(); // Mints yveCRV
-                }
-                else{
-                    // Avoid rugging pre-existing strategist rewards (which are denominated in same token we're swapping fore)
-                    uint256 strategistRewards = vault.balanceOf(address(this));
-                    swap(usdc, yvBoost, usdcBalance);
-                    uint256 swapGain = vault.balanceOf(address(this)).sub(strategistRewards);
-                    if(swapGain > 0){
-                        // Here we burn our new vault shares. But because strategy is withdrawing to itself,
-                        // the want balance will not increase. Overall strategy debt is reduced, while want balance stays the same.
-                        vault.withdraw(swapGain);
-                        // The withdraw action above reduces the strategy's debt, so let's update this value we set earlier.
-                        debt = vault.strategies(address(this)).totalDebt;
-                    }
-                }
-            }
-            uint256 assets = estimatedTotalAssets();
-            if(assets >= debt){
-                _profit = assets.sub(debt);
-            }
-            else{
-                _loss = debt.sub(assets);
-            }
+        }
+
+        uint256 debt = vault.strategies(address(this)).totalDebt;
+        uint256 assets = estimatedTotalAssets();
+        if (assets >= debt){
+            _profit = assets.sub(debt);
+        } else {
+            _loss = debt.sub(assets);
         }
     }
 
@@ -176,58 +110,42 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    // NOTE: Can override `tendTrigger` and `harvestTrigger` if necessary
+    function liquidateAllPositions()
+        internal
+        override
+        returns (uint256 _amountFreed)
+    {
+        (_amountFreed, ) = liquidatePosition(estimatedTotalAssets());
+    }
 
     function prepareMigration(address _newStrategy) internal override {
-        uint256 balance3crv = IERC20(crv3).balanceOf(address(this));
-        uint256 balanceYveCrv = IERC20(address(want)).balanceOf(address(this));
+        uint256 balance3crv = balanceOf3crv();
         if(balance3crv > 0){
-            IERC20(crv3).safeTransfer(_newStrategy, balance3crv);
+            crv3.safeTransfer(_newStrategy, balance3crv);
         }
-        if(balanceYveCrv > 0){
-            IERC20(address(want)).safeTransfer(_newStrategy, balanceYveCrv);
-        }
-        IERC20(crv).safeApprove(address(want), 0);
-        IERC20(usdc).safeApprove(sushiswap, 0);
-    }
 
-    // Here we determine if better to market-buy yvBOOST or mint it via backscratcher
-    function shouldMint(uint256 _amountIn) internal returns (bool) {
-        // Using reserve ratios of swap pairs will allow us to compare whether it's more efficient to:
-        //  1) Buy yvBOOST (unwrapped for yveCRV)
-        //  2) Buy CRV (and use to mint yveCRV 1:1)
-        address[] memory path = new address[](3);
-        path[0] = usdc;
-        path[1] = weth;
-        path[2] = yvBoost;
-        uint256[] memory amounts = ISwap(sushiswap).getAmountsOut(_amountIn, path);
-        uint256 projectedYvBoost = amounts[2];
-        // Convert yvBOOST to yveCRV
-        uint256 projectedYveCrv = projectedYvBoost.mul(vault.pricePerShare()).div(1e18); // save some gas by hardcoding 1e18
-
-        path = new address[](3);
-        path[0] = usdc;
-        path[1] = weth;
-        path[2] = crv;
-        amounts = ISwap(sushiswap).getAmountsOut(_amountIn, path);
-        uint256 projectedCrv = amounts[2];
-
-        // Here we favor minting by a % value defined by "vaultBuffer"
-        bool shouldMint = projectedCrv.mul(DENOMINATOR.add(vaultBuffer)).div(DENOMINATOR) > projectedYveCrv;
-        emit BuyOrMint(shouldMint, projectedYveCrv, projectedCrv);
-
-        return shouldMint;
-    }
-
-    function withdrawFrom3CrvToUSDC() internal {
-        uint256 amount = IERC20(crv3).balanceOf(address(this));
-        if(amount > 0){
-            ICurveFi(crv3Pool).remove_liquidity_one_coin(amount, 1, 0);
+        uint256 balanceYveCrv = want.balanceOf(address(this));
+        if(balanceYveCrv > 0) {
+            IERC20(want).safeTransfer(_newStrategy, balanceYveCrv);
         }
     }
 
-    function quoteWithdrawFrom3Crv(uint256 _amount) internal view returns(uint256) {
-        return ICurveFi(crv3Pool).calc_withdraw_one_coin(_amount, 1);
+    function ethToWant(uint256 _amtInWei)
+        public
+        view
+        virtual
+        override
+        returns (uint256)
+    {
+        ISwap sushiRouter = ISwap(0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F);
+        address[] memory path = new address[](2);
+        path[0] = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2); // WETH
+        path[1] = address(0x9d409a0A012CFbA9B15F6D4B36Ac57A46966Ab9a); // yvBOOST
+        return sushiRouter.getAmountsOut(_amtInWei, path)[1];
+    }
+
+    function balanceOf3crv() public view returns (uint256) {
+        return crv3.balanceOf(address(this));
     }
 
     function getClaimable3Crv() public view returns (uint256) {
@@ -244,46 +162,6 @@ contract Strategy is BaseStrategy {
         proxy = _proxy;
     }
 
-    function swap(address token_in, address token_out, uint256 amount_in) internal {
-        // Don't swap if amount in is 0
-        if(amount_in == 0){
-            return;
-        }
-        bool is_weth = token_in == weth || token_out == weth;
-        address[] memory path = new address[](is_weth ? 2 : 3);
-        path[0] = token_in;
-        if (is_weth) {
-            path[1] = token_out;
-        } else {
-            path[1] = weth;
-            path[2] = token_out;
-        }
-        ISwap(sushiswap).swapExactTokensForTokens(
-            amount_in,
-            0,
-            path,
-            address(this),
-            now
-        );
-    }
-
-    function deposityveCRV() internal {
-        IyveCRV(address(want)).depositAll();
-    }
-
-    function setBuffer(uint256 _newBuffer) external onlyGovernance {
-        require(_newBuffer < DENOMINATOR);
-        vaultBuffer = _newBuffer;
-        emit UpdatedBuffer(_newBuffer);
-    }
-
-    function restoreApprovals() external onlyGovernance {
-        IERC20(crv).safeApprove(address(want), 0); // CRV must go to zero first before increase
-        IERC20(usdc).safeApprove(sushiswap, 0); // USDC must go to zero first before increase
-        IERC20(crv).safeApprove(address(want), type(uint256).max);
-        IERC20(usdc).safeApprove(sushiswap, type(uint256).max);
-    }
-
     // internal helpers
     function protectedTokens()
         internal
@@ -291,4 +169,27 @@ contract Strategy is BaseStrategy {
         override
         returns (address[] memory)
     {}
+
+    // ----------------- YSWAPS FUNCTIONS ---------------------
+
+    function setTradeFactory(address _tradeFactory) external onlyGovernance {
+        if (tradeFactory != address(0)) {
+            _removeTradeFactoryPermissions();
+        }
+
+        // approve and set up trade factory
+        crv3.safeApprove(_tradeFactory, type(uint256).max);
+        ITradeFactory tf = ITradeFactory(_tradeFactory);
+        tf.enable(address(crv3), address(want));
+        tradeFactory = _tradeFactory;
+    }
+
+    function removeTradeFactoryPermissions() external onlyEmergencyAuthorized {
+        _removeTradeFactoryPermissions();
+
+    }
+    function _removeTradeFactoryPermissions() internal {
+        crv3.safeApprove(tradeFactory, 0);
+        tradeFactory = address(0);
+    }
 }

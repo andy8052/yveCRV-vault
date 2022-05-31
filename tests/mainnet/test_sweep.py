@@ -1,7 +1,4 @@
 import brownie
-from helpers import showBalances
-from brownie import Contract
-import time
 
 def test_sweep(gov, vault, strategy, token, amount, weth, weth_amount):
     # Strategy want token doesn't work
